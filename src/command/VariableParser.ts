@@ -9,26 +9,12 @@ export class VariableSubstituter {
         this.action = action;
     }
 
-    substitute() {
-        this.action.command = parse(this.action.command);
+    substitute(command: string): string {
+        command = parse(command);
         if (this.action.preCommand !== undefined) {
             this.action.preCommand = parse(this.action.preCommand);
         }
-        for (let i = 0; i < this.action.arguments.length; i++) {
-            const arg = this.action.arguments[i];
-            if (typeof arg === 'string') {
-                this.action.arguments[i] = parse(arg);
-            } else {
-                switch (arg.type) {
-                    case 'PickString':
-                        for (let j = 0; j < arg.options.length; j++) {
-                            arg.options[j] = parse(arg.options[j]);
-                        }
-                        break;
-                    case 'PromptString': break;
-                }
-            }
-        }
+        return command;
     }
 }
 

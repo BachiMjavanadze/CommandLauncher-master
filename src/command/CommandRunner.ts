@@ -1,5 +1,5 @@
 import { QuickPickItem, Terminal, TerminalOptions, window } from "vscode";
-import { Action, Input, PromptString, PickString } from "../config/Configuration";
+import { Action, Variable, Input, PromptString, PickString } from "../config/Configuration";
 import { VariableSubstituter } from "./VariableParser";
 
 export class CommandRunner {
@@ -27,25 +27,28 @@ export class CommandRunner {
     }
 
     async showQuickPick(action: Action) {
+        const variables = action.variables;
         const substituter = new VariableSubstituter(action);
-        substituter.substitute();
+        let command = action.command;
 
-        const terminalArgs: string[] = [];
-        if (!action.arguments.length) {
-            this.executeCommand(action.command, action);
-        } else {
-            for (let index = 0; index < action.arguments.length; index++) {
-                const input = action.arguments[index];
-                let res = await this.handleArgument(input);
-                if (res !== undefined && res.length) {
-                    terminalArgs.push(res);
-                }
+        for (const [varName, varDetails] of Object.entries(variables)) {
+            const value = await this.handleVariable(varDetails);
+            if (value === undefined) {
+                // If any variable is not set, don't run the command
+                return;
             }
-            const finalArgs = terminalArgs.reduce((previous: String, current: String) => {
-                return previous + ' ' + current;
-            });
-            const terminalCommand = action.command + " " + finalArgs;
-            this.executeCommand(terminalCommand, action);
+            command = command.replace(varName, value);
+        }
+
+        command = substituter.substitute(command);
+        this.executeCommand(command, action);
+    }
+
+    async handleVariable(variable: Variable): Promise<string | undefined> {
+        if (variable.options) {
+            return this.askUserToPickString(variable);
+        } else {
+            return this.askUserToPromptString(variable);
         }
     }
 
@@ -71,33 +74,14 @@ export class CommandRunner {
         }
     }
 
-    async handleArgument(arg: Input): Promise<string | undefined> {
-        if (typeof arg === 'string') {
-            return arg;
-        } else {
-            switch (arg.type) {
-                case 'PickString': return this.askUserToPickString(arg);
-                case 'PromptString': return this.askUserToPromptString(arg);
-                default: return undefined;
-            }
-        }
+    async askUserToPromptString(variable: Variable): Promise<string | undefined> {
+        return window.showInputBox({ prompt: variable.placeholder });
     }
 
-    async askUserToPromptString(arg: PromptString): Promise<string | undefined> {
-        return window.showInputBox({ prompt: arg.inputContext });
-    }
-
-    async askUserToPickString(arg: PickString): Promise<string | undefined> {
-        const quickPick = await this.createQuickPick(arg.options, arg.placeholder);
+    async askUserToPickString(variable: Variable): Promise<string | undefined> {
+        const quickPick = await this.createQuickPick(variable.options!, variable.placeholder);
         const pickedItems = quickPick ?? [];
-        const pickedLabels = pickedItems.map(
-            (item: QuickPickItem) => {
-                return item.label;
-            }
-        );
-        return pickedLabels.reduce((previous: String, current: String) => {
-            return previous + ' ' + current;
-        });
+        return pickedItems.map(item => item.label).join(' ');
     }
 
     async createQuickPick(labels: String[], placeholder?: string): Promise<QuickPickItem[] | undefined> {

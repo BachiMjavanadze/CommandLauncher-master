@@ -16,12 +16,17 @@ export type Input = string | PromptString | PickString;
 
 export interface Action {
     command: string;
-    arguments: Input[];
+    variables: { [key: string]: Variable };
     label?: string;
     group?: string;
     cwd?: string;
     preCommand?: string;
     revealConsole?: boolean;
+}
+
+export interface Variable {
+    options?: string[];
+    placeholder: string;
 }
 
 export interface PromptString {

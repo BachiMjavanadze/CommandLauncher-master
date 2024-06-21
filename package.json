@@ -1,8 +1,8 @@
 {
   "name": "command-launcher-tree",
   "displayName": "Command launcher",
-  "description": "Run command with differents type of arguments.",
-  "version": "0.0.2",
+  "description": "Run command with different types of arguments.",
+  "version": "0.0.3",
   "license": "MIT",
   "publisher": "Agui",
   "repository": {
@@ -86,11 +86,11 @@
           "default": [],
           "items": {
             "type": "object",
-            "description": "Command and arguments associated.",
+            "description": "Command and variables associated.",
             "additionalProperties": false,
             "required": [
               "command",
-              "arguments"
+              "variables"
             ],
             "properties": {
               "cwd": {
@@ -99,7 +99,7 @@
                 "minLength": 1
               },
               "group": {
-                "description": "All command with same group will be packed in tree.",
+                "description": "All commands with the same group will be packed in the tree.",
                 "type": "string",
                 "default": ""
               },
@@ -109,7 +109,7 @@
                 "default": ""
               },
               "preCommand": {
-                "description": "Command that will be launch only at terminal creation.",
+                "description": "Command that will be launched only at terminal creation.",
                 "type": "string",
                 "default": ""
               },
@@ -117,57 +117,23 @@
                 "description": "Command to be executed.",
                 "type": "string"
               },
-              "arguments": {
-                "description": "Arguments, can be string, promptString or pickString.",
-                "type": "array",
-                "default": [],
-                "items": {
-                  "type": [
-                    "string",
-                    "object"
-                  ],
-                  "oneOf": [
-                    {
+              "variables": {
+                "type": "object",
+                "description": "Variables to be substituted in the command",
+                "additionalProperties": {
+                  "type": "object",
+                  "properties": {
+                    "options": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "placeholder": {
                       "type": "string"
-                    },
-                    {
-                      "title": "promptString",
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "inputContext"
-                      ],
-                      "properties": {
-                        "inputContext": {
-                          "description": "Shown in the quick input, provides context for the input.",
-                          "type": "string"
-                        }
-                      }
-                    },
-                    {
-                      "title": "pickString",
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": [
-                        "options"
-                      ],
-                      "properties": {
-                        "options": {
-                          "description": "An array of options for the user to pick from.",
-                          "type": "array",
-                          "minItems": 1,
-                          "items": {
-                            "type": "string"
-                          }
-                        },
-                        "placeholder": {
-                          "description": "The placeholder text for the dropdown.",
-                          "type": "string",
-                          "default": "Choose something"
-                        }
-                      }
                     }
-                  ]
+                  },
+                  "required": ["placeholder"]
                 }
               },
               "revealConsole": {
