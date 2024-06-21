@@ -7,7 +7,7 @@ export function buildCommandTreeProvider(): CommandTreeProvider {
 }
 
 export function loadItems(): Item[] {
-    const actions = loadActions();
+    const actions = loadActions().filter(action => !action.isContextMenuCommand);
     const groups = findGroups(actions);
     return buildItems(groups);
 }

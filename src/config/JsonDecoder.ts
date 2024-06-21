@@ -19,4 +19,7 @@ function fillOptionalProperties(action: Action) {
     if (action.variables === undefined) {
         action.variables = {};
     }
+    if (action.isContextMenuCommand === undefined) {
+        action.isContextMenuCommand = false;
+    }
 }

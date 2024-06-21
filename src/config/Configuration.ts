@@ -22,6 +22,7 @@ export interface Action {
     cwd?: string;
     preCommand?: string;
     revealConsole?: boolean;
+    isContextMenuCommand?: boolean;
 }
 
 export interface Variable {
