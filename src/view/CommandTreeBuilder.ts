@@ -14,11 +14,17 @@ export function loadItems(): Item[] {
 
 function buildItems(groups: Map<string, Action[]>): Item[] {
     const items: Item[] = [];
-    groups.forEach((v, k) => {
-        const children = v.map(action => {
+    const sortedGroups = new Map([...groups.entries()].sort((a, b) => {
+        if (a[0] === 'Ungrouped') return 1;
+        if (b[0] === 'Ungrouped') return -1;
+        return a[0].localeCompare(b[0]);
+    }));
+
+    sortedGroups.forEach((actions, groupName) => {
+        const children = actions.map(action => {
             return new Item(buildLabel(action), action);
         });
-        items.push(new Item(k, undefined, children));
+        items.push(new Item(groupName, undefined, children));
     });
     return items;
 }
@@ -26,10 +32,11 @@ function buildItems(groups: Map<string, Action[]>): Item[] {
 function findGroups(actions: Action[]): Map<string, Action[]> {
     const groups = new Map<string, Action[]>();
     actions.forEach(v => {
-        if (groups.has(v.group!!)) {
-            groups.get(v.group!!)!!.push(v);
+        const groupName = v.group || 'Ungrouped';
+        if (groups.has(groupName)) {
+            groups.get(groupName)!.push(v);
         } else {
-            groups.set(v.group!!, [v]);
+            groups.set(groupName, [v]);
         }
     });
     return groups;

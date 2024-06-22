@@ -22,4 +22,7 @@ function fillOptionalProperties(action: Action) {
     if (action.isContextMenuCommand === undefined) {
         action.isContextMenuCommand = false;
     }
+    if (action.group === undefined || action.group === "") {
+        action.group = "Ungrouped";
+    }
 }

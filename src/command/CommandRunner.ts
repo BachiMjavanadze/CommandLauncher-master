@@ -1,6 +1,7 @@
 import { QuickPickItem, Terminal, TerminalOptions, window } from "vscode";
 import { Action, Variable, Input, PromptString, PickString } from "../config/Configuration";
 import { VariableSubstituter } from "./VariableParser";
+import * as vscode from 'vscode';
 
 export class CommandRunner {
     actions: Map<Action, string> = new Map<Action, string>();
@@ -34,14 +35,13 @@ export class CommandRunner {
         for (const [varName, varDetails] of Object.entries(variables)) {
             const value = await this.handleVariable(varDetails);
             if (value === undefined) {
-                // If any variable is not set, don't run the command
                 return;
             }
             command = command.replace(varName, value);
         }
 
         command = substituter.substitute(command);
-        this.executeCommand(command, action);
+        await this.executeCommand(command, action);
     }
 
     async handleVariable(variable: Variable): Promise<string | undefined> {
@@ -75,13 +75,34 @@ export class CommandRunner {
     }
 
     async askUserToPromptString(variable: Variable): Promise<string | undefined> {
-        return window.showInputBox({ prompt: variable.placeholder });
+        return new Promise((resolve) => {
+            const inputBox = vscode.window.createInputBox();
+            inputBox.prompt = variable.placeholder;
+            inputBox.ignoreFocusOut = true;
+            inputBox.onDidAccept(() => {
+                const value = inputBox.value;
+                inputBox.hide();
+                resolve(value);
+            });
+            inputBox.onDidHide(() => resolve(undefined));
+            inputBox.show();
+        });
     }
 
     async askUserToPickString(variable: Variable): Promise<string | undefined> {
-        const quickPick = await this.createQuickPick(variable.options!, variable.placeholder);
-        const pickedItems = quickPick ?? [];
-        return pickedItems.map(item => item.label).join(' ');
+        return new Promise((resolve) => {
+            const quickPick = vscode.window.createQuickPick();
+            quickPick.items = variable.options!.map(option => ({ label: option }));
+            quickPick.placeholder = variable.placeholder;
+            quickPick.ignoreFocusOut = true;
+            quickPick.onDidAccept(() => {
+                const selected = quickPick.selectedItems[0];
+                quickPick.hide();
+                resolve(selected ? selected.label : undefined);
+            });
+            quickPick.onDidHide(() => resolve(undefined));
+            quickPick.show();
+        });
     }
 
     async createQuickPick(labels: String[], placeholder?: string): Promise<QuickPickItem[] | undefined> {
