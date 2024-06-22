@@ -1,88 +1,88 @@
 {
-  "name": "command-launcher-tree",
-  "displayName": "Command launcher",
-  "description": "Run command with different types of arguments.",
+  "name": "terminal-snippets",
+  "displayName": "Terminal Snippets",
+  "description": "Runs predefined terminal commands with various types of arguments.",
   "version": "0.0.3",
   "license": "MIT",
-  "publisher": "Agui",
+  "publisher": "Bachi Mjavanadze",
   "repository": {
     "type": "github",
-    "url": "https://github.com/Anthony-Guillaume/CommandLauncher"
+    "url": "https://github.com/BachiMjavanadze/CommandLauncher-master"
   },
   "engines": {
-    "vscode": "^1.72.0"
+    "vscode": "^1.90.2"
   },
   "categories": [
     "Other"
   ],
   "activationEvents": [
     "onStartupFinished",
-    "onView:command-launcher"
+    "onView:terminal-snippets"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "commandLauncher.refresh",
+        "command": "terminalSnippets.refresh",
         "title": "Refresh",
         "icon": "$(refresh)"
       },
       {
-        "command": "commandLauncher.run",
+        "command": "terminalSnippets.run",
         "title": "Run",
         "icon": "$(run)"
       },
       {
-        "command": "commandLauncher.runLast",
+        "command": "terminalSnippets.runLast",
         "title": "Run last",
         "icon": "$(refresh)"
       },
       {
-        "command": "commandLauncher.showContextMenu",
-        "title": "Command Launcher"
+        "command": "terminalSnippets.showContextMenu",
+        "title": "Terminal Snippets"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "command-launcher",
-          "title": "Command launcher",
-          "icon": "$(run)"
+          "id": "terminal-snippets",
+          "title": "Terminal Snippets",
+          "icon": "$(terminal-cmd)"
         }
       ]
     },
     "views": {
-      "command-launcher": [
+      "terminal-snippets": [
         {
-          "id": "launcher",
+          "id": "snippets",
           "name": "At your command",
-          "contextualTitle": "Command launcher"
+          "contextualTitle": "Terminal Snippets"
         }
       ]
     },
     "menus": {
       "view/title": [
         {
-          "command": "commandLauncher.refresh",
-          "when": "view == launcher",
+          "command": "terminalSnippets.refresh",
+          "when": "view == snippets",
           "group": "navigation"
         }
       ],
       "view/item/context": [
         {
-          "command": "commandLauncher.run",
-          "when": "view == launcher && viewItem == hasCommand",
+          "command": "terminalSnippets.run",
+          "when": "view == snippets && viewItem == hasCommand",
           "group": "inline"
         },
         {
-          "command": "commandLauncher.runLast",
-          "when": "view == launcher && viewItem == hasCommand",
+          "command": "terminalSnippets.runLast",
+          "when": "view == snippets && viewItem == hasCommand",
           "group": "inline"
         }
       ],
       "explorer/context": [
         {
-          "command": "commandLauncher.showContextMenu",
+          "command": "terminalSnippets.showContextMenu",
           "group": "navigation"
         }
       ]
@@ -90,7 +90,7 @@
     "configuration": {
       "title": "Actions",
       "properties": {
-        "commandLauncher.actions": {
+        "terminalSnippets.actions": {
           "type": "array",
           "description": "Array of actions to be provided to user.",
           "default": [],

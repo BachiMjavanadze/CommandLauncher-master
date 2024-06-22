@@ -10,23 +10,23 @@ export function activate(context: vscode.ExtensionContext) {
     const contextMenuProvider = new ContextMenuProvider(commandRunner);
 
     context.subscriptions.push(
-        vscode.window.registerTreeDataProvider('launcher', provider)
+        vscode.window.registerTreeDataProvider('snippets', provider)
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("commandLauncher.run", (item: Item) => {
+        vscode.commands.registerCommand("terminalSnippets.run", (item: Item) => {
             if (item.action !== undefined) { commandRunner.showQuickPick(item.action); }
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("commandLauncher.runLast", (item: Item) => {
+        vscode.commands.registerCommand("terminalSnippets.runLast", (item: Item) => {
             if (item.action !== undefined) { commandRunner.runActionWithLastArguments(item.action); }
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("commandLauncher.refresh", () => provider.refresh())
+        vscode.commands.registerCommand("terminalSnippets.refresh", () => provider.refresh())
     );
 
     contextMenuProvider.registerCommands(context);

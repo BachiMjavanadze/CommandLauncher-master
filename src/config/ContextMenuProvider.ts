@@ -19,7 +19,7 @@ export class ContextMenuProvider {
     }
 
     registerCommands(context: vscode.ExtensionContext) {
-        const showContextMenuCommand = vscode.commands.registerCommand('commandLauncher.showContextMenu', (uri: vscode.Uri) => {
+        const showContextMenuCommand = vscode.commands.registerCommand('terminalSnippets.showContextMenu', (uri: vscode.Uri) => {
             this.showContextMenu(uri);
         });
         context.subscriptions.push(showContextMenuCommand);
