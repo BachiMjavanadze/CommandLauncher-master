@@ -96,11 +96,10 @@
           "default": [],
           "items": {
             "type": "object",
-            "description": "Command and variables associated.",
+            "description": "Command and optional variables associated.",
             "additionalProperties": false,
             "required": [
-              "command",
-              "variables"
+              "command"
             ],
             "properties": {
               "cwd": {
@@ -129,7 +128,7 @@
               },
               "variables": {
                 "type": "object",
-                "description": "Variables to be substituted in the command",
+                "description": "Optional variables to be substituted in the command",
                 "additionalProperties": {
                   "type": "object",
                   "properties": {
@@ -143,7 +142,9 @@
                       "type": "string"
                     }
                   },
-                  "required": ["placeholder"]
+                  "required": [
+                    "placeholder"
+                  ]
                 }
               },
               "revealConsole": {

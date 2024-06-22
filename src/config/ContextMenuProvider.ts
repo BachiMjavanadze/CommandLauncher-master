@@ -11,6 +11,7 @@ interface ActionQuickPickItem extends vscode.QuickPickItem {
 export class ContextMenuProvider {
     private commandRunner: CommandRunner;
     private quickPick: vscode.QuickPick<ActionQuickPickItem>;
+    private isExecutingCommand: boolean = false;
 
     constructor(commandRunner: CommandRunner) {
         this.commandRunner = commandRunner;
@@ -47,8 +48,11 @@ export class ContextMenuProvider {
 
                 this.quickPick.onDidAccept(async () => {
                     const selectedCommand = this.quickPick.selectedItems[0];
-                    if (selectedCommand && selectedCommand.action) {
+                    if (selectedCommand && selectedCommand.action && !this.isExecutingCommand) {
+                        this.isExecutingCommand = true;
                         await this.runCommand(selectedCommand.action, uri);
+                        this.isExecutingCommand = false;
+                        this.quickPick.hide();
                     }
                 });
             }
@@ -75,33 +79,22 @@ export class ContextMenuProvider {
         const clickedItemAbsolutePath = uri.fsPath;
         const clickedItemRelativePath = workspaceFolder ? vscode.workspace.asRelativePath(uri) : clickedItemAbsolutePath;
 
-        const commandWithReplacedVariables = action.command
+        let command = action.command
             .replace(/\$clickedItemAbsolutePath/g, clickedItemAbsolutePath)
             .replace(/\$clickedItemRelativePath/g, clickedItemRelativePath)
             .replace(/\$baseFolderAbsolutePath/g, baseFolderAbsolutePath || '');
 
-        const actionWithReplacedVariables: Action = {
-            ...action,
-            command: commandWithReplacedVariables
-        };
-
-        await this.handleVariables(actionWithReplacedVariables);
-    }
-
-    private async handleVariables(action: Action) {
-        const variables = action.variables;
-        let command = action.command;
-
-        for (const [varName, varDetails] of Object.entries(variables)) {
-            const value = await this.handleVariable(varDetails);
-            if (value === undefined) {
-                // If any variable is not set, don't run the command
-                return;
+        if (action.variables) {
+            for (const [varName, varDetails] of Object.entries(action.variables)) {
+                const value = await this.handleVariable(varDetails);
+                if (value === undefined) {
+                    // If any variable is not set, don't run the command
+                    return;
+                }
+                command = command.replace(varName, value);
             }
-            command = command.replace(varName, value);
         }
 
-        this.quickPick.hide();
         await this.commandRunner.executeCommand(command, action);
     }
 

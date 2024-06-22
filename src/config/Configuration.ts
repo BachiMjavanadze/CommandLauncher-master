@@ -16,7 +16,7 @@ export type Input = string | PromptString | PickString;
 
 export interface Action {
     command: string;
-    variables: { [key: string]: Variable };
+    variables?: { [key: string]: Variable };
     label?: string;
     group?: string;
     cwd?: string;

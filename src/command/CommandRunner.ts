@@ -5,19 +5,17 @@ import * as vscode from 'vscode';
 
 export class CommandRunner {
     actions: Map<Action, string> = new Map<Action, string>();
-    terminals: Map<Action, Terminal> = new Map<Action, Terminal>();
+    terminals: Map<string, vscode.Terminal> = new Map<string, vscode.Terminal>();
 
     constructor() {
-        window.onDidCloseTerminal(terminal => {
-            const actionsToDelete: Action[] = [];
-            this.terminals.forEach((value, key) => {
+        vscode.window.onDidCloseTerminal(terminal => {
+            for (const [key, value] of this.terminals.entries()) {
                 if (value === terminal) {
-                    actionsToDelete.push(key);
+                    this.terminals.delete(key);
+                    break;
                 }
-            });
-            actionsToDelete.forEach(v => this.terminals.delete(v));
+            }
         });
-
     }
 
     async runActionWithLastArguments(action: Action) {
@@ -28,18 +26,19 @@ export class CommandRunner {
     }
 
     async showQuickPick(action: Action) {
-        const variables = action.variables;
         const substituter = new VariableSubstituter(action);
         let command = action.command;
-
-        for (const [varName, varDetails] of Object.entries(variables)) {
-            const value = await this.handleVariable(varDetails);
-            if (value === undefined) {
-                return;
+    
+        if (action.variables) {
+            for (const [varName, varDetails] of Object.entries(action.variables)) {
+                const value = await this.handleVariable(varDetails);
+                if (value === undefined) {
+                    return;
+                }
+                command = command.replace(varName, value);
             }
-            command = command.replace(varName, value);
         }
-
+    
         command = substituter.substitute(command);
         await this.executeCommand(command, action);
     }
@@ -54,21 +53,21 @@ export class CommandRunner {
 
     executeCommand(text: string, action: Action) {
         this.actions.set(action, text);
-        let terminal = this.terminals.get(action);
-        if (!terminal) {
-            terminal = this.createTerminal(action);
-            const preCommand = action.preCommand;
+        const terminalKey = action.label || action.command;
+        let terminal = this.terminals.get(terminalKey);
 
-            if (preCommand !== undefined && preCommand.length) {
-                terminal.sendText(preCommand + " ; " + text);
-            } else {
-                terminal.sendText(text);
-            }
+        if (!terminal || terminal.exitStatus !== undefined) {
+            terminal = this.createTerminal(action);
+            this.terminals.set(terminalKey, terminal);
+        }
+
+        const preCommand = action.preCommand;
+        if (preCommand !== undefined && preCommand.length) {
+            terminal.sendText(preCommand + " ; " + text);
         } else {
             terminal.sendText(text);
         }
 
-        // Reveal the terminal only if revealConsole is true
         if (action.revealConsole) {
             terminal.show();
         }
@@ -115,10 +114,11 @@ export class CommandRunner {
         });
     }
 
-    createTerminal(action: Action): Terminal {
-        const options: TerminalOptions = { name: action.label, cwd: action.cwd };
-        const terminal = window.createTerminal(options);
-        this.terminals.set(action, terminal);
-        return terminal;
+    createTerminal(action: Action): vscode.Terminal {
+        const options: vscode.TerminalOptions = { 
+            name: action.label || action.command,
+            cwd: action.cwd
+        };
+        return vscode.window.createTerminal(options);
     }
 }
