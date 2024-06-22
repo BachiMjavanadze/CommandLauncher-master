@@ -27,8 +27,8 @@ export class CommandRunner {
 
     async showQuickPick(action: Action) {
         const substituter = new VariableSubstituter(action);
-        let command = action.command;
-    
+        let command = substituter.substitute(action.command);
+
         if (action.variables) {
             for (const [varName, varDetails] of Object.entries(action.variables)) {
                 const value = await this.handleVariable(varDetails);
@@ -38,8 +38,7 @@ export class CommandRunner {
                 command = command.replace(varName, value);
             }
         }
-    
-        command = substituter.substitute(command);
+
         await this.executeCommand(command, action);
     }
 
@@ -52,22 +51,26 @@ export class CommandRunner {
     }
 
     executeCommand(text: string, action: Action) {
+        const substituter = new VariableSubstituter(action);
+        text = substituter.substitute(text);
+        
         this.actions.set(action, text);
         const terminalKey = action.label || action.command;
         let terminal = this.terminals.get(terminalKey);
-
+    
         if (!terminal || terminal.exitStatus !== undefined) {
             terminal = this.createTerminal(action);
             this.terminals.set(terminalKey, terminal);
         }
-
+    
         const preCommand = action.preCommand;
         if (preCommand !== undefined && preCommand.length) {
-            terminal.sendText(preCommand + " ; " + text);
+            const substitutedPreCommand = substituter.substitute(preCommand);
+            terminal.sendText(substitutedPreCommand + " ; " + text);
         } else {
             terminal.sendText(text);
         }
-
+    
         if (action.revealConsole) {
             terminal.show();
         }

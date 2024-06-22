@@ -1,7 +1,6 @@
-import path = require("path");
-import { TextDocument, window } from "vscode";
-import { Action, PickString } from "../config/Configuration";
 import * as vscode from 'vscode';
+import * as path from 'path';
+import { Action } from "../config/Configuration";
 
 export class VariableSubstituter {
     action: Action;
@@ -20,10 +19,19 @@ export class VariableSubstituter {
 }
 
 function parse(text: string, uri?: vscode.Uri): string {
-    const activeFile = window.activeTextEditor?.document;
+    const activeFile = vscode.window.activeTextEditor?.document;
     if (activeFile !== undefined) {
         text = parseActiveFileVariables(activeFile, text);
     }
+    
+    // Always try to get the workspace folder, even if uri is undefined
+    const workspaceFolder = uri 
+        ? vscode.workspace.getWorkspaceFolder(uri) 
+        : vscode.workspace.workspaceFolders?.[0];
+
+    const baseFolderAbsolutePath = workspaceFolder ? workspaceFolder.uri.fsPath : '';
+    text = text.replace(/\$baseFolderAbsolutePath/g, baseFolderAbsolutePath);
+
     if (uri) {
         text = parseContextMenuVariables(uri, text);
     }
@@ -33,13 +41,11 @@ function parse(text: string, uri?: vscode.Uri): string {
 
 function parseContextMenuVariables(uri: vscode.Uri, text: string): string {
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-    const baseFolderAbsolutePath = workspaceFolder ? workspaceFolder.uri.fsPath : undefined;
     const clickedItemAbsolutePath = uri.fsPath;
     const clickedItemRelativePath = workspaceFolder ? vscode.workspace.asRelativePath(uri) : clickedItemAbsolutePath;
 
     text = text.replace(/\$clickedItemAbsolutePath/g, clickedItemAbsolutePath);
     text = text.replace(/\$clickedItemRelativePath/g, clickedItemRelativePath);
-    text = text.replace(/\$baseFolderAbsolutePath/g, baseFolderAbsolutePath || '');
 
     return text;
 }
