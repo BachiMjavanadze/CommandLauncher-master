@@ -90,6 +90,14 @@
     "configuration": {
       "title": "Actions",
       "properties": {
+        "terminalSnippets.innerVariables": {
+          "type": "object",
+          "description": "Inner variables for predefined substitutions",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
         "terminalSnippets.actions": {
           "type": "array",
           "description": "Array of actions to be provided to user.",

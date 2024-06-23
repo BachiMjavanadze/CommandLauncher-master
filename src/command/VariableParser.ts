@@ -1,20 +1,31 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { Action } from "../config/Configuration";
+import { Action, getInnerVariables } from "../config/Configuration";
 
 export class VariableSubstituter {
     action: Action;
+    innerVariables: { [key: string]: string };
 
     constructor(action: Action) {
         this.action = action;
+        this.innerVariables = getInnerVariables();
     }
 
     substitute(command: string, uri?: vscode.Uri): string {
+        command = this.substituteInnerVariables(command);
         command = parse(command, uri);
         if (this.action.preCommand !== undefined) {
+            this.action.preCommand = this.substituteInnerVariables(this.action.preCommand);
             this.action.preCommand = parse(this.action.preCommand, uri);
         }
         return command;
+    }
+
+    private substituteInnerVariables(text: string): string {
+        for (const [key, value] of Object.entries(this.innerVariables)) {
+            text = text.replace(new RegExp(key.replace('$', '\\$'), 'g'), value);
+        }
+        return text;
     }
 }
 

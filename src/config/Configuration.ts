@@ -2,6 +2,13 @@ import { workspace } from "vscode";
 
 const baseSectionConfig = 'terminalSnippets';
 
+export interface InnerVariables {
+    [key: string]: string;
+}
+
+export const getInnerVariables = (): InnerVariables => 
+    getConfiguration().get<InnerVariables>('innerVariables', {});
+
 export const enum Section {
     'command' = 'command',
     'actions' = 'actions'

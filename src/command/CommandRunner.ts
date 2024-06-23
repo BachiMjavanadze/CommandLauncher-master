@@ -49,7 +49,7 @@ export class CommandRunner {
             return this.askUserToPromptString(variable);
         }
     }
-
+        
     executeCommand(text: string, action: Action) {
         const substituter = new VariableSubstituter(action);
         text = substituter.substitute(text);
