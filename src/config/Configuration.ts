@@ -35,6 +35,7 @@ export interface Action {
 export interface Variable {
     options?: string[];
     placeholder: string;
+    allowEmptyValue?: boolean;
 }
 
 export interface PromptString {

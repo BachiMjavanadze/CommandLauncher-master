@@ -160,6 +160,11 @@
                 "type": "boolean",
                 "default": true
               },
+              "allowEmptyValue": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to allow empty values for this variable"
+              },
               "isContextMenuCommand": {
                 "description": "Whether this command should appear in the context menu",
                 "type": "boolean",

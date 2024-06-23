@@ -111,11 +111,28 @@ export class ContextMenuProvider {
             const inputBox = vscode.window.createInputBox();
             inputBox.prompt = variable.placeholder;
             inputBox.ignoreFocusOut = true;
+
+            const validateInput = (value: string) => {
+                if (!variable.allowEmptyValue && value.trim() === '') {
+                    inputBox.validationMessage = 'Blank value not allowed';
+                    return false;
+                }
+                inputBox.validationMessage = undefined;
+                return true;
+            };
+
+            inputBox.onDidChangeValue((value) => {
+                validateInput(value);
+            });
+
             inputBox.onDidAccept(() => {
                 const value = inputBox.value;
-                inputBox.hide();
-                resolve(value);
+                if (validateInput(value)) {
+                    inputBox.hide();
+                    resolve(value);
+                }
             });
+
             inputBox.onDidHide(() => resolve(undefined));
             inputBox.show();
         });
