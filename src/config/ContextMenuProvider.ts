@@ -141,14 +141,36 @@ export class ContextMenuProvider {
     private async askUserToPickString(variable: Variable): Promise<string | undefined> {
         return new Promise((resolve) => {
             const quickPick = vscode.window.createQuickPick();
-            quickPick.items = variable.options!.map(option => ({ label: option }));
+            quickPick.items = variable.options && variable.options.length > 0 
+                ? variable.options.map(option => ({ label: option }))
+                : [{ label: '' }];
             quickPick.placeholder = variable.placeholder;
             quickPick.ignoreFocusOut = true;
-            quickPick.onDidAccept(() => {
-                const selected = quickPick.selectedItems[0];
-                quickPick.hide();
-                resolve(selected ? selected.label : undefined);
+    
+            let isValid = true;
+    
+            const validateInput = (value: string) => {
+                isValid = variable.allowEmptyValue || value.trim() !== '';
+                quickPick.title = isValid ? undefined : 'Blank value not allowed';
+                return isValid;
+            };
+    
+            quickPick.onDidChangeSelection((items) => {
+                const selected = items[0];
+                if (selected && validateInput(selected.label)) {
+                    quickPick.hide();
+                    resolve(selected.label);
+                }
             });
+    
+            quickPick.onDidAccept(() => {
+                if (isValid) {
+                    const selected = quickPick.selectedItems[0];
+                    quickPick.hide();
+                    resolve(selected ? selected.label : undefined);
+                }
+            });
+    
             quickPick.onDidHide(() => resolve(undefined));
             quickPick.show();
         });

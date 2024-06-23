@@ -28,22 +28,22 @@ export class CommandRunner {
     async showQuickPick(action: Action) {
         const substituter = new VariableSubstituter(action);
         let command = substituter.substitute(action.command);
-
+    
         if (action.variables) {
             for (const [varName, varDetails] of Object.entries(action.variables)) {
                 const value = await this.handleVariable(varDetails);
                 if (value === undefined) {
-                    return;
+                    return; // Exit if a variable is not set
                 }
                 command = command.replace(varName, value);
             }
         }
-
+    
         await this.executeCommand(command, action);
     }
 
     async handleVariable(variable: Variable): Promise<string | undefined> {
-        if (variable.options) {
+        if (variable.options !== undefined) {
             return this.askUserToPickString(variable);
         } else {
             return this.askUserToPromptString(variable);
@@ -111,14 +111,36 @@ export class CommandRunner {
     async askUserToPickString(variable: Variable): Promise<string | undefined> {
         return new Promise((resolve) => {
             const quickPick = vscode.window.createQuickPick();
-            quickPick.items = variable.options!.map(option => ({ label: option }));
+            quickPick.items = variable.options && variable.options.length > 0 
+                ? variable.options.map(option => ({ label: option }))
+                : [{ label: '' }];
             quickPick.placeholder = variable.placeholder;
             quickPick.ignoreFocusOut = true;
-            quickPick.onDidAccept(() => {
-                const selected = quickPick.selectedItems[0];
-                quickPick.hide();
-                resolve(selected ? selected.label : undefined);
+    
+            let isValid = true;
+    
+            const validateInput = (value: string) => {
+                isValid = variable.allowEmptyValue || value.trim() !== '';
+                quickPick.title = isValid ? undefined : 'Blank value not allowed';
+                return isValid;
+            };
+    
+            quickPick.onDidChangeSelection((items) => {
+                const selected = items[0];
+                if (selected && validateInput(selected.label)) {
+                    quickPick.hide();
+                    resolve(selected.label);
+                }
             });
+    
+            quickPick.onDidAccept(() => {
+                if (isValid) {
+                    const selected = quickPick.selectedItems[0];
+                    quickPick.hide();
+                    resolve(selected ? selected.label : undefined);
+                }
+            });
+    
             quickPick.onDidHide(() => resolve(undefined));
             quickPick.show();
         });
