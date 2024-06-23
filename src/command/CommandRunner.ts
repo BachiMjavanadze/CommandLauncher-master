@@ -28,7 +28,7 @@ export class CommandRunner {
     async showQuickPick(action: Action) {
         const substituter = new VariableSubstituter(action);
         let command = substituter.substitute(action.command);
-    
+
         if (action.variables) {
             for (const [varName, varDetails] of Object.entries(action.variables)) {
                 const value = await this.handleVariable(varDetails);
@@ -38,7 +38,7 @@ export class CommandRunner {
                 command = command.replace(varName, value);
             }
         }
-    
+
         await this.executeCommand(command, action);
     }
 
@@ -49,20 +49,20 @@ export class CommandRunner {
             return this.askUserToPromptString(variable);
         }
     }
-        
+
     executeCommand(text: string, action: Action) {
         const substituter = new VariableSubstituter(action);
         text = substituter.substitute(text);
-        
+
         this.actions.set(action, text);
         const terminalKey = action.label || action.command;
         let terminal = this.terminals.get(terminalKey);
-    
+
         if (!terminal || terminal.exitStatus !== undefined) {
             terminal = this.createTerminal(action);
             this.terminals.set(terminalKey, terminal);
         }
-    
+
         const preCommand = action.preCommand;
         if (preCommand !== undefined && preCommand.length) {
             const substitutedPreCommand = substituter.substitute(preCommand);
@@ -70,7 +70,7 @@ export class CommandRunner {
         } else {
             terminal.sendText(text);
         }
-    
+
         if (action.revealConsole) {
             terminal.show();
         }
@@ -117,27 +117,37 @@ export class CommandRunner {
             quickPick.placeholder = variable.placeholder;
             quickPick.ignoreFocusOut = true;
     
-            let isValid = true;
-    
             const validateInput = (value: string) => {
-                isValid = variable.allowEmptyValue || value.trim() !== '';
+                const isValid = variable.allowEmptyValue || value.trim() !== '';
                 quickPick.title = isValid ? undefined : 'Blank value not allowed';
                 return isValid;
             };
     
+            quickPick.onDidChangeValue((value) => {
+                validateInput(value);
+                if (variable.allowAdditionalValue) {
+                    const customItem = { label: value };
+                    const existingItems = quickPick.items.filter(item => item.label !== value);
+                    quickPick.items = [customItem, ...existingItems];
+                }
+            });
+    
             quickPick.onDidChangeSelection((items) => {
-                const selected = items[0];
-                if (selected && validateInput(selected.label)) {
+                if (items.length > 0 && !variable.allowAdditionalValue) {
                     quickPick.hide();
-                    resolve(selected.label);
+                    resolve(items[0].label);
                 }
             });
     
             quickPick.onDidAccept(() => {
-                if (isValid) {
-                    const selected = quickPick.selectedItems[0];
-                    quickPick.hide();
-                    resolve(selected ? selected.label : undefined);
+                const selectedItem = quickPick.selectedItems[0];
+                const value = selectedItem ? selectedItem.label : quickPick.value;
+                
+                if (validateInput(value)) {
+                    if (variable.allowAdditionalValue || variable.options?.includes(value)) {
+                        quickPick.hide();
+                        resolve(value);
+                    }
                 }
             });
     
@@ -145,6 +155,7 @@ export class CommandRunner {
             quickPick.show();
         });
     }
+
 
     async createQuickPick(labels: String[], placeholder?: string): Promise<QuickPickItem[] | undefined> {
         const items = labels.map((v: String) => {
@@ -157,7 +168,7 @@ export class CommandRunner {
     }
 
     createTerminal(action: Action): vscode.Terminal {
-        const options: vscode.TerminalOptions = { 
+        const options: vscode.TerminalOptions = {
             name: action.label || action.command,
             cwd: action.cwd
         };

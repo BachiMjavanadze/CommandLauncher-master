@@ -36,6 +36,7 @@ export interface Variable {
     options?: string[];
     placeholder: string;
     allowEmptyValue?: boolean;
+    allowAdditionalValue?: boolean;
 }
 
 export interface PromptString {

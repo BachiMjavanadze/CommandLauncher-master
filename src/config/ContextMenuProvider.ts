@@ -138,39 +138,49 @@ export class ContextMenuProvider {
         });
     }
 
-    private async askUserToPickString(variable: Variable): Promise<string | undefined> {
+    async askUserToPickString(variable: Variable): Promise<string | undefined> {
         return new Promise((resolve) => {
             const quickPick = vscode.window.createQuickPick();
-            quickPick.items = variable.options && variable.options.length > 0 
+            quickPick.items = variable.options && variable.options.length > 0
                 ? variable.options.map(option => ({ label: option }))
                 : [{ label: '' }];
             quickPick.placeholder = variable.placeholder;
             quickPick.ignoreFocusOut = true;
-    
-            let isValid = true;
-    
+
             const validateInput = (value: string) => {
-                isValid = variable.allowEmptyValue || value.trim() !== '';
+                const isValid = variable.allowEmptyValue || value.trim() !== '';
                 quickPick.title = isValid ? undefined : 'Blank value not allowed';
                 return isValid;
             };
-    
+
+            quickPick.onDidChangeValue((value) => {
+                validateInput(value);
+                if (variable.allowAdditionalValue) {
+                    const customItem = { label: value };
+                    const existingItems = quickPick.items.filter(item => item.label !== value);
+                    quickPick.items = [customItem, ...existingItems];
+                }
+            });
+
             quickPick.onDidChangeSelection((items) => {
-                const selected = items[0];
-                if (selected && validateInput(selected.label)) {
+                if (items.length > 0 && !variable.allowAdditionalValue) {
                     quickPick.hide();
-                    resolve(selected.label);
+                    resolve(items[0].label);
                 }
             });
-    
+
             quickPick.onDidAccept(() => {
-                if (isValid) {
-                    const selected = quickPick.selectedItems[0];
-                    quickPick.hide();
-                    resolve(selected ? selected.label : undefined);
+                const selectedItem = quickPick.selectedItems[0];
+                const value = selectedItem ? selectedItem.label : quickPick.value;
+
+                if (validateInput(value)) {
+                    if (variable.allowAdditionalValue || variable.options?.includes(value)) {
+                        quickPick.hide();
+                        resolve(value);
+                    }
                 }
             });
-    
+
             quickPick.onDidHide(() => resolve(undefined));
             quickPick.show();
         });
