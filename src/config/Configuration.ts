@@ -6,7 +6,7 @@ export interface InnerVariables {
     [key: string]: string;
 }
 
-export const getInnerVariables = (): InnerVariables => 
+export const getInnerVariables = (): InnerVariables =>
     getConfiguration().get<InnerVariables>('innerVariables', {});
 
 export const enum Section {
@@ -23,7 +23,7 @@ export type Input = string | PromptString | PickString;
 
 export interface Action {
     command: string;
-    variables?: { [key: string]: Variable };
+    variables?: { [key: string]: Variable; };
     label?: string;
     group?: string;
     cwd?: string;
@@ -37,17 +37,18 @@ export interface Variable {
     placeholder: string;
     allowEmptyValue?: boolean;
     allowAdditionalValue?: boolean;
+    defaultValue?: string;
 }
 
 export interface PromptString {
     type: 'PromptString';
-    inputContext: string
+    inputContext: string;
 }
 
 export interface PickString {
     type: 'PickString';
     options: string[],
-    placeholder?: string; 
+    placeholder?: string;
 }
 
 export function fillType(input: Input) {

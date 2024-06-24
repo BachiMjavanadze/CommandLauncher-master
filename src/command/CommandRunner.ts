@@ -81,6 +81,7 @@ export class CommandRunner {
             const inputBox = vscode.window.createInputBox();
             inputBox.prompt = variable.placeholder;
             inputBox.ignoreFocusOut = true;
+            inputBox.value = variable.defaultValue || '';
 
             const validateInput = (value: string) => {
                 if (!variable.allowEmptyValue && value.trim() === '') {
@@ -111,11 +112,23 @@ export class CommandRunner {
     async askUserToPickString(variable: Variable): Promise<string | undefined> {
         return new Promise((resolve) => {
             const quickPick = vscode.window.createQuickPick();
-            quickPick.items = variable.options && variable.options.length > 0 
-                ? variable.options.map(option => ({ label: option }))
-                : [{ label: '' }];
+            
+            // Add defaultValue to options if it's not already there
+            const options = variable.options || [];
+            if (variable.defaultValue && !options.includes(variable.defaultValue)) {
+                options.unshift(variable.defaultValue);
+            }
+            
+            quickPick.items = options.map(option => ({ label: option }));
             quickPick.placeholder = variable.placeholder;
             quickPick.ignoreFocusOut = true;
+    
+            // Set default value
+            if (variable.defaultValue) {
+                quickPick.value = variable.defaultValue;
+                // Pre-select the default value
+                quickPick.selectedItems = [{ label: variable.defaultValue }];
+            }
     
             const validateInput = (value: string) => {
                 const isValid = variable.allowEmptyValue || value.trim() !== '';
@@ -125,26 +138,27 @@ export class CommandRunner {
     
             quickPick.onDidChangeValue((value) => {
                 validateInput(value);
-                if (variable.allowAdditionalValue) {
+                if (value.trim() === '' && variable.defaultValue) {
+                    // If the input is empty, reselect the default value
+                    quickPick.selectedItems = [{ label: variable.defaultValue }];
+                } else if (variable.allowAdditionalValue) {
                     const customItem = { label: value };
                     const existingItems = quickPick.items.filter(item => item.label !== value);
                     quickPick.items = [customItem, ...existingItems];
                 }
             });
     
-            quickPick.onDidChangeSelection((items) => {
-                if (items.length > 0 && !variable.allowAdditionalValue) {
-                    quickPick.hide();
-                    resolve(items[0].label);
-                }
-            });
-    
             quickPick.onDidAccept(() => {
-                const selectedItem = quickPick.selectedItems[0];
-                const value = selectedItem ? selectedItem.label : quickPick.value;
-                
+                const selectedItems = quickPick.selectedItems;
+                let value = selectedItems.length > 0 ? selectedItems[0].label : quickPick.value;
+    
+                // If the value is empty and we have a default value, use the default
+                if (value.trim() === '' && variable.defaultValue) {
+                    value = variable.defaultValue;
+                }
+    
                 if (validateInput(value)) {
-                    if (variable.allowAdditionalValue || variable.options?.includes(value)) {
+                    if (variable.allowAdditionalValue || options.includes(value)) {
                         quickPick.hide();
                         resolve(value);
                     }
@@ -155,7 +169,6 @@ export class CommandRunner {
             quickPick.show();
         });
     }
-
 
     async createQuickPick(labels: String[], placeholder?: string): Promise<QuickPickItem[] | undefined> {
         const items = labels.map((v: String) => {

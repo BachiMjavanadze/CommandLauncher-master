@@ -170,6 +170,10 @@
                 "default": false,
                 "description": "Whether to allow additional custom values not in the options list"
               },
+              "defaultValue": {
+                  "type": "string",
+                  "description": "Default value for the variable"
+                },
               "isContextMenuCommand": {
                 "description": "Whether this command should appear in the context menu",
                 "type": "boolean",
