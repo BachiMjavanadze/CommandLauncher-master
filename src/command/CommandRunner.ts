@@ -2,6 +2,7 @@ import { QuickPickItem, Terminal, TerminalOptions, window } from "vscode";
 import { Action, Variable, Input, PromptString, PickString } from "../config/Configuration";
 import { VariableSubstituter } from "./VariableParser";
 import * as vscode from 'vscode';
+import { ValueStorage } from './ValueStorage';
 
 export class CommandRunner {
     actions: Map<Action, string> = new Map<Action, string>();
@@ -29,21 +30,57 @@ export class CommandRunner {
         const substituter = new VariableSubstituter(action);
         let command = substituter.substitute(action.command);
 
+        const storedValues = ValueStorage.getStoredValues(action.label || action.command);
+        if (storedValues === null) {
+            return; // Exit if storage file is damaged
+        }
+
+        const variableValues: { [key: string]: string } = {};
+
         if (action.variables) {
-            for (const [varName, varDetails] of Object.entries(action.variables)) {
-                if (varDetails.defaultValue?.value && varDetails.defaultValue.skipDefault) {
-                    command = command.replace(varName, varDetails.defaultValue.value);
-                } else {
-                    const value = await this.handleVariable(varDetails);
-                    if (value === undefined) {
-                        return; // Exit if a variable is not set
+            const variableRegex = /\$\w+/g;
+            const variablesInOrder = command.match(variableRegex) || [];
+
+            for (const varName of variablesInOrder) {
+                const varDetails = action.variables[varName];
+                if (varDetails) {
+                    if (varDetails.defaultValue?.value && varDetails.defaultValue.skipDefault) {
+                        command = command.replace(varName, varDetails.defaultValue.value);
+                    } else {
+                        let value: string | undefined;
+                        if (varDetails.storeValue && storedValues && storedValues[varName]) {
+                            if (Array.isArray(storedValues[varName])) {
+                                varDetails.options = storedValues[varName] as string[];
+                            } else {
+                                varDetails.defaultValue = { value: storedValues[varName] as string };
+                            }
+                        }
+                        value = await this.handleVariable(varDetails);
+                        if (value === undefined) {
+                            return; // Exit if a variable is not set
+                        }
+                        command = command.replace(varName, value);
+                        variableValues[varName] = value;
                     }
-                    command = command.replace(varName, value);
                 }
             }
         }
 
         await this.executeCommand(command, action);
+
+        // Store values after execution
+        if (action.variables) {
+            const variablesToStore = Object.entries(action.variables)
+                .filter(([_, varDetails]) => varDetails.storeValue)
+                .reduce((acc, [varName, _]) => {
+                    acc[varName] = variableValues[varName];
+                    return acc;
+                }, {} as { [key: string]: string });
+
+            if (Object.keys(variablesToStore).length > 0) {
+                ValueStorage.storeValues(action, variablesToStore);
+            }
+        }
     }
 
     async handleVariable(variable: Variable): Promise<string | undefined> {

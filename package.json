@@ -184,6 +184,11 @@
                   }
                 }
               },
+              "storeValue": {
+                "type": "boolean",
+                "default": false,
+                "description": "Whether to store the value of this variable for future use"
+              },
               "isContextMenuCommand": {
                 "description": "Whether this command should appear in the context menu",
                 "type": "boolean",

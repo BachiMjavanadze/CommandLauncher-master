@@ -41,6 +41,7 @@ export interface Variable {
         value?: string;
         skipDefault?: boolean;
     };
+    storeValue?: boolean; 
 }
 
 export interface PromptString {

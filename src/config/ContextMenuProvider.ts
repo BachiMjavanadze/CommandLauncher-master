@@ -1,7 +1,10 @@
+// ContextMenuProvider.ts
+
 import * as vscode from 'vscode';
 import { CommandRunner } from '../command/CommandRunner';
 import { loadActions } from './JsonDecoder';
 import { Action, Variable } from './Configuration';
+import { ValueStorage } from '../command/ValueStorage';
 
 interface ActionQuickPickItem extends vscode.QuickPickItem {
     action?: Action;
@@ -84,22 +87,58 @@ export class ContextMenuProvider {
             .replace(/\$clickedItemRelativePath/g, clickedItemRelativePath)
             .replace(/\$baseFolderAbsolutePath/g, baseFolderAbsolutePath || '');
 
+        const storedValues = ValueStorage.getStoredValues(action.label || action.command);
+        if (storedValues === null) {
+            this.quickPick.hide(); // Close the quick pick
+            return; // Exit if storage file is damaged
+        }
+
+        const variableValues: { [key: string]: string } = {};
+
         if (action.variables) {
-            for (const [varName, varDetails] of Object.entries(action.variables)) {
-                if (varDetails.defaultValue?.value && varDetails.defaultValue.skipDefault) {
-                    command = command.replace(varName, varDetails.defaultValue.value);
-                } else {
-                    const value = await this.handleVariable(varDetails);
-                    if (value === undefined) {
-                        // If any variable is not set, don't run the command
-                        return;
+            const variableRegex = /\$\w+/g;
+            const variablesInOrder = command.match(variableRegex) || [];
+
+            for (const varName of variablesInOrder) {
+                const varDetails = action.variables[varName];
+                if (varDetails) {
+                    if (varDetails.defaultValue?.value && varDetails.defaultValue.skipDefault) {
+                        command = command.replace(varName, varDetails.defaultValue.value);
+                    } else {
+                        let value: string | undefined;
+                        if (varDetails.storeValue && storedValues && storedValues[varName]) {
+                            if (Array.isArray(storedValues[varName])) {
+                                varDetails.options = storedValues[varName] as string[];
+                            } else {
+                                varDetails.defaultValue = { value: storedValues[varName] as string };
+                            }
+                        }
+                        value = await this.handleVariable(varDetails);
+                        if (value === undefined) {
+                            return; // Exit if a variable is not set
+                        }
+                        command = command.replace(varName, value);
+                        variableValues[varName] = value;
                     }
-                    command = command.replace(varName, value);
                 }
             }
         }
 
         await this.commandRunner.executeCommand(command, action);
+
+        // Store values after execution
+        if (action.variables) {
+            const variablesToStore = Object.entries(action.variables)
+                .filter(([_, varDetails]) => varDetails.storeValue)
+                .reduce((acc, [varName, _]) => {
+                    acc[varName] = variableValues[varName];
+                    return acc;
+                }, {} as { [key: string]: string });
+
+            if (Object.keys(variablesToStore).length > 0) {
+                ValueStorage.storeValues(action, variablesToStore);
+            }
+        }
     }
 
     private async handleVariable(variable: Variable): Promise<string | undefined> {
@@ -146,30 +185,30 @@ export class ContextMenuProvider {
     async askUserToPickString(variable: Variable): Promise<string | undefined> {
         return new Promise((resolve) => {
             const quickPick = vscode.window.createQuickPick();
-            
+
             // Add defaultValue to options if it's not already there
             const options = variable.options || [];
             if (variable.defaultValue?.value && !options.includes(variable.defaultValue.value)) {
                 options.unshift(variable.defaultValue.value);
             }
-            
+
             quickPick.items = options.map(option => ({ label: option }));
             quickPick.placeholder = variable.placeholder;
             quickPick.ignoreFocusOut = true;
-    
+
             // Set default value
             if (variable.defaultValue?.value) {
                 quickPick.value = variable.defaultValue.value;
                 // Pre-select the default value
                 quickPick.selectedItems = [{ label: variable.defaultValue.value }];
             }
-    
+
             const validateInput = (value: string) => {
                 const isValid = variable.allowEmptyValue || value.trim() !== '';
                 quickPick.title = isValid ? undefined : 'Blank value not allowed';
                 return isValid;
             };
-    
+
             quickPick.onDidChangeValue((value) => {
                 validateInput(value);
                 if (value.trim() === '' && variable.defaultValue?.value) {
@@ -181,16 +220,16 @@ export class ContextMenuProvider {
                     quickPick.items = [customItem, ...existingItems];
                 }
             });
-    
+
             quickPick.onDidAccept(() => {
                 const selectedItems = quickPick.selectedItems;
                 let value = selectedItems.length > 0 ? selectedItems[0].label : quickPick.value;
-    
+
                 // If the value is empty and we have a default value, use the default
                 if (value.trim() === '' && variable.defaultValue?.value) {
                     value = variable.defaultValue.value;
                 }
-    
+
                 if (validateInput(value)) {
                     if (variable.allowAdditionalValue || options.includes(value)) {
                         quickPick.hide();
@@ -198,7 +237,7 @@ export class ContextMenuProvider {
                     }
                 }
             });
-    
+
             quickPick.onDidHide(() => resolve(undefined));
             quickPick.show();
         });
