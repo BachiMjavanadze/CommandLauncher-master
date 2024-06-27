@@ -171,9 +171,19 @@
                 "description": "Whether to allow additional custom values not in the options list"
               },
               "defaultValue": {
-                  "type": "string",
-                  "description": "Default value for the variable"
-                },
+                "type": "object",
+                "properties": {
+                  "value": {
+                    "type": "string",
+                    "description": "The default value for the variable"
+                  },
+                  "skipDefault": {
+                    "type": "boolean",
+                    "description": "Whether to skip the default value and substitute it directly in the command",
+                    "default": false
+                  }
+                }
+              },
               "isContextMenuCommand": {
                 "description": "Whether this command should appear in the context menu",
                 "type": "boolean",

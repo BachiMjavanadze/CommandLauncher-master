@@ -37,7 +37,10 @@ export interface Variable {
     placeholder: string;
     allowEmptyValue?: boolean;
     allowAdditionalValue?: boolean;
-    defaultValue?: string;
+    defaultValue?: {
+        value?: string;
+        skipDefault?: boolean;
+    };
 }
 
 export interface PromptString {

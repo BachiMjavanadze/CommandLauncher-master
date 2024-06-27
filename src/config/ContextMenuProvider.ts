@@ -86,12 +86,16 @@ export class ContextMenuProvider {
 
         if (action.variables) {
             for (const [varName, varDetails] of Object.entries(action.variables)) {
-                const value = await this.handleVariable(varDetails);
-                if (value === undefined) {
-                    // If any variable is not set, don't run the command
-                    return;
+                if (varDetails.defaultValue?.value && varDetails.defaultValue.skipDefault) {
+                    command = command.replace(varName, varDetails.defaultValue.value);
+                } else {
+                    const value = await this.handleVariable(varDetails);
+                    if (value === undefined) {
+                        // If any variable is not set, don't run the command
+                        return;
+                    }
+                    command = command.replace(varName, value);
                 }
-                command = command.replace(varName, value);
             }
         }
 
@@ -111,7 +115,7 @@ export class ContextMenuProvider {
             const inputBox = vscode.window.createInputBox();
             inputBox.prompt = variable.placeholder;
             inputBox.ignoreFocusOut = true;
-            inputBox.value = variable.defaultValue || '';
+            inputBox.value = variable.defaultValue?.value || '';
 
             const validateInput = (value: string) => {
                 if (!variable.allowEmptyValue && value.trim() === '') {
@@ -145,8 +149,8 @@ export class ContextMenuProvider {
             
             // Add defaultValue to options if it's not already there
             const options = variable.options || [];
-            if (variable.defaultValue && !options.includes(variable.defaultValue)) {
-                options.unshift(variable.defaultValue);
+            if (variable.defaultValue?.value && !options.includes(variable.defaultValue.value)) {
+                options.unshift(variable.defaultValue.value);
             }
             
             quickPick.items = options.map(option => ({ label: option }));
@@ -154,10 +158,10 @@ export class ContextMenuProvider {
             quickPick.ignoreFocusOut = true;
     
             // Set default value
-            if (variable.defaultValue) {
-                quickPick.value = variable.defaultValue;
+            if (variable.defaultValue?.value) {
+                quickPick.value = variable.defaultValue.value;
                 // Pre-select the default value
-                quickPick.selectedItems = [{ label: variable.defaultValue }];
+                quickPick.selectedItems = [{ label: variable.defaultValue.value }];
             }
     
             const validateInput = (value: string) => {
@@ -168,9 +172,9 @@ export class ContextMenuProvider {
     
             quickPick.onDidChangeValue((value) => {
                 validateInput(value);
-                if (value.trim() === '' && variable.defaultValue) {
+                if (value.trim() === '' && variable.defaultValue?.value) {
                     // If the input is empty, reselect the default value
-                    quickPick.selectedItems = [{ label: variable.defaultValue }];
+                    quickPick.selectedItems = [{ label: variable.defaultValue.value }];
                 } else if (variable.allowAdditionalValue) {
                     const customItem = { label: value };
                     const existingItems = quickPick.items.filter(item => item.label !== value);
@@ -183,8 +187,8 @@ export class ContextMenuProvider {
                 let value = selectedItems.length > 0 ? selectedItems[0].label : quickPick.value;
     
                 // If the value is empty and we have a default value, use the default
-                if (value.trim() === '' && variable.defaultValue) {
-                    value = variable.defaultValue;
+                if (value.trim() === '' && variable.defaultValue?.value) {
+                    value = variable.defaultValue.value;
                 }
     
                 if (validateInput(value)) {
