@@ -1,5 +1,3 @@
-// ContextMenuProvider.ts
-
 import * as vscode from 'vscode';
 import { CommandRunner } from '../command/CommandRunner';
 import { loadActions } from './JsonDecoder';
@@ -15,11 +13,13 @@ export class ContextMenuProvider {
     private commandRunner: CommandRunner;
     private quickPick: vscode.QuickPick<ActionQuickPickItem>;
     private isExecutingCommand: boolean = false;
+    private allActions: Action[];
 
     constructor(commandRunner: CommandRunner) {
         this.commandRunner = commandRunner;
         this.quickPick = vscode.window.createQuickPick<ActionQuickPickItem>();
         this.quickPick.ignoreFocusOut = true;
+        this.allActions = loadActions();
     }
 
     registerCommands(context: vscode.ExtensionContext) {
@@ -30,7 +30,7 @@ export class ContextMenuProvider {
     }
 
     private async showContextMenu(uri: vscode.Uri) {
-        const actions = loadActions().filter(action => action.isContextMenuCommand);
+        const actions = this.allActions.filter(action => action.isContextMenuCommand);
         const groups = this.groupActions(actions);
 
         this.quickPick.items = Array.from(groups.keys()).map(groupName => ({
@@ -87,58 +87,77 @@ export class ContextMenuProvider {
             .replace(/\$clickedItemRelativePath/g, clickedItemRelativePath)
             .replace(/\$baseFolderAbsolutePath/g, baseFolderAbsolutePath || '');
 
-        const storedValues = ValueStorage.getStoredValues(action.label || action.command);
-        if (storedValues === null) {
-            this.quickPick.hide(); // Close the quick pick
-            return; // Exit if storage file is damaged
-        }
-
-        const variableValues: { [key: string]: string } = {};
+        const variableValues: { [key: string]: { value: string, sourceAction: Action } } = {};
 
         if (action.variables) {
             const variableRegex = /\$\w+/g;
             const variablesInOrder = command.match(variableRegex) || [];
 
             for (const varName of variablesInOrder) {
-                const varDetails = action.variables[varName];
-                if (varDetails) {
-                    if (varDetails.defaultValue?.value && varDetails.defaultValue.skipDefault) {
-                        command = command.replace(varName, varDetails.defaultValue.value);
+                let varDetails = action.variables[varName];
+                let sourceAction = action;
+
+                if (!varDetails) {
+                    const result = this.findVariableInOtherActions(varName, action);
+                    if (result) {
+                        varDetails = result.varDetails;
+                        sourceAction = result.action;
                     } else {
-                        let value: string | undefined;
-                        if (varDetails.storeValue && storedValues && storedValues[varName]) {
-                            if (Array.isArray(storedValues[varName])) {
-                                varDetails.options = storedValues[varName] as string[];
-                            } else {
-                                varDetails.defaultValue = { value: storedValues[varName] as string };
-                            }
-                        }
-                        value = await this.handleVariable(varDetails);
-                        if (value === undefined) {
-                            return; // Exit if a variable is not set
-                        }
-                        command = command.replace(varName, value);
-                        variableValues[varName] = value;
+                        vscode.window.showErrorMessage(`Variable ${varName} not found`);
+                        return;
                     }
                 }
+
+                const storedValues = ValueStorage.getStoredValues(sourceAction.label || sourceAction.command);
+                if (storedValues === null) {
+                    this.quickPick.hide(); // Close the quick pick
+                    return; // Exit if storage file is damaged
+                }
+
+                if (varDetails.storeValue && storedValues && storedValues[varName]) {
+                    if (Array.isArray(storedValues[varName])) {
+                        varDetails.options = storedValues[varName] as string[];
+                    } else {
+                        varDetails.defaultValue = { value: storedValues[varName] as string };
+                    }
+                }
+
+                const value = await this.handleVariable(varDetails);
+                if (value === undefined) {
+                    return; // Exit if a variable is not set
+                }
+                command = command.replace(varName, value);
+                variableValues[varName] = { value, sourceAction };
             }
         }
 
         await this.commandRunner.executeCommand(command, action);
 
         // Store values after execution
-        if (action.variables) {
-            const variablesToStore = Object.entries(action.variables)
-                .filter(([_, varDetails]) => varDetails.storeValue)
-                .reduce((acc, [varName, _]) => {
-                    acc[varName] = variableValues[varName];
-                    return acc;
-                }, {} as { [key: string]: string });
+        const actionVariables: { [key: string]: { [key: string]: string } } = {};
 
-            if (Object.keys(variablesToStore).length > 0) {
-                ValueStorage.storeValues(action, variablesToStore);
+        for (const [varName, { value, sourceAction }] of Object.entries(variableValues)) {
+            const actionLabel = sourceAction.label || sourceAction.command;
+            if (!actionVariables[actionLabel]) {
+                actionVariables[actionLabel] = {};
+            }
+            actionVariables[actionLabel][varName] = value;
+        }
+
+        for (const [actionLabel, variables] of Object.entries(actionVariables)) {
+            if (Object.keys(variables).length > 0) {
+                ValueStorage.storeValues(this.allActions.find(a => (a.label || a.command) === actionLabel)!, variables);
             }
         }
+    }
+
+    private findVariableInOtherActions(varName: string, currentAction: Action): { varDetails: Variable, action: Action } | null {
+        for (const action of this.allActions) {
+            if (action !== currentAction && action.variables && action.variables[varName]) {
+                return { varDetails: action.variables[varName], action };
+            }
+        }
+        return null;
     }
 
     private async handleVariable(variable: Variable): Promise<string | undefined> {
@@ -182,7 +201,7 @@ export class ContextMenuProvider {
         });
     }
 
-    async askUserToPickString(variable: Variable): Promise<string | undefined> {
+    private async askUserToPickString(variable: Variable): Promise<string | undefined> {
         return new Promise((resolve) => {
             const quickPick = vscode.window.createQuickPick();
 
