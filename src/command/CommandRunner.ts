@@ -9,6 +9,15 @@ export class CommandRunner {
     actions: Map<Action, string> = new Map<Action, string>();
     terminals: Map<string, vscode.Terminal> = new Map<string, vscode.Terminal>();
     allActions: Action[];
+    private _isExecutingCommand: boolean = false;
+
+    get isExecutingCommand(): boolean {
+        return this._isExecutingCommand;
+    }
+
+    private set isExecutingCommand(value: boolean) {
+        this._isExecutingCommand = value;
+    }
 
     constructor() {
         this.allActions = loadActions(); // Initialize allActions in the constructor
@@ -24,16 +33,34 @@ export class CommandRunner {
     }
 
     async runActionWithLastArguments(action: Action) {
-        const terminalCommand = this.actions.get(action);
-        if (terminalCommand !== undefined) {
-            await this.executeCommand(terminalCommand, action);
-        } else {
-            // If there's no stored command, run it as a new command
-            await this.showQuickPick(action);
+        if (this.isExecutingCommand) {
+            vscode.window.showInformationMessage("A command is already running. Please wait for it to finish.");
+            return;
+        }
+
+        this.isExecutingCommand = true;
+
+        try {
+            const terminalCommand = this.actions.get(action);
+            if (terminalCommand !== undefined) {
+                await this.executeCommand(terminalCommand, action);
+            } else {
+                // If there's no stored command, run it as a new command
+                await this.showQuickPick(action);
+            }
+        } finally {
+            this.isExecutingCommand = false;
         }
     }
 
     async showQuickPick(action: Action) {
+        if (this.isExecutingCommand) {
+            vscode.window.showInformationMessage("A command is already running. Please wait for it to finish.");
+            return;
+        }
+
+        this.isExecutingCommand = true;
+
         try {
             // Reload actions and stored values
             this.allActions = loadActions();
@@ -153,6 +180,8 @@ export class CommandRunner {
             }
             vscode.commands.executeCommand('workbench.action.closeAllInputs');
             return; // Stop execution
+        } finally {
+            this.isExecutingCommand = false;
         }
     }
 
@@ -233,7 +262,10 @@ export class CommandRunner {
                 }
             });
 
-            inputBox.onDidHide(() => resolve(undefined));
+            inputBox.onDidHide(() => {
+                this.isExecutingCommand = false;
+                resolve(undefined);
+            });
             inputBox.show();
         });
     }
@@ -294,7 +326,10 @@ export class CommandRunner {
                 }
             });
 
-            quickPick.onDidHide(() => resolve(undefined));
+            quickPick.onDidHide(() => {
+                this.isExecutingCommand = false;
+                resolve(undefined);
+            });
             quickPick.show();
         });
     }

@@ -77,12 +77,12 @@
         {
           "command": "terminalSnippets.run",
           "when": "view == snippets && viewItem == hasCommand",
-          "group": "inline"
+          "group": "inline@1"
         },
         {
           "command": "terminalSnippets.runLast",
           "when": "view == snippets && viewItem == hasCommand",
-          "group": "inline"
+          "group": "inline@2"
         },
         {
           "command": "terminalSnippets.runToggler",
@@ -249,7 +249,9 @@
                     "description": "Task to run instead of command"
                   }
                 },
-                "required": ["label"]
+                "required": [
+                  "label"
+                ]
               },
               "command2": {
                 "type": "object",
@@ -267,10 +269,36 @@
                     "description": "Task to run instead of command"
                   }
                 },
-                "required": ["label"]
+                "required": [
+                  "label"
+                ]
               }
             },
-            "required": ["group", "command1", "command2"]
+            "required": [
+              "group",
+              "command1",
+              "command2"
+            ]
+          }
+        },
+        "terminalSnippets.globalSettings": {
+          "type": "object",
+          "description": "Global settings for Terminal Snippets",
+          "default": {
+            "enableRunAndRunLastIcons": false,
+            "enableTogglerIcon": false
+          },
+          "properties": {
+            "enableRunAndRunLastIcons": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable or disable Run and Run Last icons"
+            },
+            "enableTogglerIcon": {
+              "type": "boolean",
+              "default": false,
+              "description": "Enable or disable Toggler icon"
+            }
           }
         }
       }

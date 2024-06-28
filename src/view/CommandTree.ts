@@ -1,10 +1,10 @@
 import { Event, EventEmitter, ProviderResult, TreeDataProvider, TreeItem, TreeItemCollapsibleState } from "vscode";
+import * as vscode from 'vscode';
 import { Action } from "../config/Configuration";
 import { loadItems } from "./CommandTreeBuilder";
 import { TogglerCommand } from "../config/TogglerCommand";
 
 export class CommandTreeProvider implements TreeDataProvider<Item> {
-
     data: Item[];
 
     constructor(items: Item[]) {
@@ -19,7 +19,42 @@ export class CommandTreeProvider implements TreeDataProvider<Item> {
         this._onDidChangeTreeData.fire();
     }
 
+    private getGlobalSettings(): { enableRunAndRunLastIcons: boolean; enableTogglerIcon: boolean } {
+        const config = vscode.workspace.getConfiguration('terminalSnippets');
+        return config.get('globalSettings') || { enableRunAndRunLastIcons: false, enableTogglerIcon: false };
+    }
+
     getTreeItem(element: Item): TreeItem | Thenable<TreeItem> {
+        const globalSettings = this.getGlobalSettings();
+        
+        if (element.action) {
+            element.command = !globalSettings.enableRunAndRunLastIcons ? {
+                command: 'terminalSnippets.run',
+                title: 'Run',
+                arguments: [element]
+            } : undefined;
+            
+            if (globalSettings.enableRunAndRunLastIcons) {
+                element.iconPath = undefined;
+                element.contextValue = 'hasCommand';
+            } else {
+                element.contextValue = undefined;
+            }
+        } else if (element.togglerCommand) {
+            element.command = !globalSettings.enableTogglerIcon ? {
+                command: 'terminalSnippets.runToggler',
+                title: 'Run Toggler Command',
+                arguments: [element]
+            } : undefined;
+            
+            if (globalSettings.enableTogglerIcon) {
+                element.iconPath = undefined;
+                element.contextValue = 'hasTogglerCommand';
+            } else {
+                element.contextValue = undefined;
+            }
+        }
+        
         return element;
     }
 
@@ -37,15 +72,30 @@ export class Item extends TreeItem {
     togglerCommand: TogglerCommand | undefined;
 
     constructor(label: string, action?: Action, children?: Item[], togglerCommand?: TogglerCommand) {
+        const treeItemLabel: vscode.TreeItemLabel = {
+            label: label,
+            highlights: undefined
+        };
+
         super(
-            label,
+            treeItemLabel,
             children === undefined ? TreeItemCollapsibleState.None :
-                TreeItemCollapsibleState.Expanded);
+                TreeItemCollapsibleState.Expanded
+        );
+
         this.children = children;
         this.action = action;
         this.togglerCommand = togglerCommand;
-        this.contextValue = (children === undefined || !children) ? 
-            (togglerCommand ? 'hasTogglerCommand' : 'hasCommand') : 
-            undefined;
+        
+        // Explicitly set an empty tooltip
+        this.tooltip = '';
+
+        if (action) {
+            this.contextValue = 'hasCommand';
+        } else if (togglerCommand) {
+            this.contextValue = 'hasTogglerCommand';
+        } else {
+            this.contextValue = undefined;
+        }
     }
 }

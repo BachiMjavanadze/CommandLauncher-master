@@ -1,3 +1,4 @@
+// extension.ts
 import * as vscode from 'vscode';
 import { CommandRunner } from './command/CommandRunner';
 import { Item } from './view/CommandTree';
@@ -6,8 +7,8 @@ import { ContextMenuProvider } from './config/ContextMenuProvider';
 import { TogglerCommand, toggleState } from './config/TogglerCommand';
 
 export function activate(context: vscode.ExtensionContext) {
-    const provider = buildCommandTreeProvider();
     const commandRunner = new CommandRunner();
+    const provider = buildCommandTreeProvider();
     const contextMenuProvider = new ContextMenuProvider(commandRunner);
 
     context.subscriptions.push(
@@ -32,6 +33,11 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(
         vscode.commands.registerCommand("terminalSnippets.runToggler", (item: Item) => {
+            if (commandRunner.isExecutingCommand) {
+                vscode.window.showInformationMessage("A command is already running. Please wait for it to finish.");
+                return;
+            }
+
             if (item.togglerCommand) {
                 const tc = item.togglerCommand;
                 const isFirstState = toggleState(tc.group, tc.command1.label);
