@@ -30,6 +30,8 @@ export interface Action {
     preCommand?: string;
     revealConsole?: boolean;
     isContextMenuCommand?: boolean;
+    searchStoredValueInCurrentGroup?: boolean;
+    searchVariablesInCurrentGroup?: boolean;
 }
 
 export interface Variable {

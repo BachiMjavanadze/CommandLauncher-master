@@ -194,6 +194,16 @@
                 "default": false,
                 "description": "Whether to store the value of this variable for future use"
               },
+              "searchStoredValueInCurrentGroup": {
+                "type": "boolean",
+                "description": "Whether to search stored values only in the current group",
+                "default": true
+              },
+              "searchVariablesInCurrentGroup": {
+                "type": "boolean",
+                "description": "Whether to search variables only in the current group",
+                "default": true
+              },
               "isContextMenuCommand": {
                 "description": "Whether this command should appear in the context menu",
                 "type": "boolean",

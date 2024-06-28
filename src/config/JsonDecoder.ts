@@ -25,4 +25,10 @@ function fillOptionalProperties(action: Action) {
     if (action.group === undefined || action.group === "") {
         action.group = "Ungrouped";
     }
+    if (action.searchStoredValueInCurrentGroup === undefined) {
+        action.searchStoredValueInCurrentGroup = true;
+    }
+    if (action.searchVariablesInCurrentGroup === undefined) {
+        action.searchVariablesInCurrentGroup = true;
+    }
 }

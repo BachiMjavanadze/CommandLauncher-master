@@ -1,3 +1,4 @@
+// CommandRunner.ts
 import * as vscode from 'vscode';
 import { Action, Variable } from "../config/Configuration";
 import { VariableSubstituter } from "./VariableParser";
@@ -56,7 +57,10 @@ export class CommandRunner {
                             varDetails = result.varDetails;
                             sourceAction = result.action;
                         } else {
-                            vscode.window.showErrorMessage(`Variable ${varName} not found`);
+                            await vscode.window.showErrorMessage(
+                                `Variable ${varName} not found${action.searchVariablesInCurrentGroup ? ' in the current group' : ''}. Please check your configuration.`,
+                                { modal: true }
+                            );
                             return;
                         }
                     }
@@ -96,12 +100,16 @@ export class CommandRunner {
             await this.executeCommand(command, action);
 
             // Store values after execution
-            const actionVariables: { [key: string]: { [key: string]: string | string[]; }; } = {};
+            const actionVariables: { [key: string]: { [key: string]: { [key: string]: string | string[]; }; }; } = {};
 
             for (const [varName, { value, sourceAction }] of Object.entries(variableValues)) {
+                const groupName = sourceAction.group || 'Ungrouped';
                 const actionLabel = sourceAction.label || sourceAction.command;
-                if (!actionVariables[actionLabel]) {
-                    actionVariables[actionLabel] = {};
+                if (!actionVariables[groupName]) {
+                    actionVariables[groupName] = {};
+                }
+                if (!actionVariables[groupName][actionLabel]) {
+                    actionVariables[groupName][actionLabel] = {};
                 }
 
                 // If the variable has options, store as an array
@@ -109,46 +117,55 @@ export class CommandRunner {
                     const storedValues = ValueStorage.getStoredValueForVariable(sourceAction, varName) as string[] | undefined;
                     if (Array.isArray(storedValues)) {
                         // Add the new value to the beginning of the array and remove duplicates
-                        actionVariables[actionLabel][varName] = [value, ...storedValues.filter(v => v !== value)];
+                        actionVariables[groupName][actionLabel][varName] = [value, ...storedValues.filter(v => v !== value)];
                     } else {
-                        actionVariables[actionLabel][varName] = [value];
+                        actionVariables[groupName][actionLabel][varName] = [value];
                     }
                 } else {
-                    actionVariables[actionLabel][varName] = value;
+                    actionVariables[groupName][actionLabel][varName] = value;
                 }
             }
 
-            for (const [actionLabel, variables] of Object.entries(actionVariables)) {
-                if (Object.keys(variables).length > 0) {
-                    const currentAction = this.allActions.find(a => (a.label || a.command) === actionLabel);
-                    if (currentAction) {
-                        const variablesToStore = Object.entries(variables).reduce((acc, [varName, value]) => {
-                            if (currentAction.variables?.[varName]?.storeValue) {
-                                acc[varName] = value;
-                            }
-                            return acc;
-                        }, {} as { [key: string]: string | string[]; });
+            for (const [groupName, groupActions] of Object.entries(actionVariables)) {
+                for (const [actionLabel, variables] of Object.entries(groupActions)) {
+                    if (Object.keys(variables).length > 0) {
+                        const currentAction = this.allActions.find(a => (a.label || a.command) === actionLabel && (a.group || 'Ungrouped') === groupName);
+                        if (currentAction) {
+                            const variablesToStore = Object.entries(variables).reduce((acc, [varName, value]) => {
+                                if (currentAction.variables?.[varName]?.storeValue) {
+                                    acc[varName] = value;
+                                }
+                                return acc;
+                            }, {} as { [key: string]: string | string[]; });
 
-                        if (Object.keys(variablesToStore).length > 0) {
-                            ValueStorage.storeValues(currentAction, variablesToStore);
+                            if (Object.keys(variablesToStore).length > 0) {
+                                ValueStorage.storeValues(currentAction, variablesToStore);
+                            }
                         }
                     }
                 }
             }
         } catch (error) {
-            if (error instanceof Error && error.message === 'Storage file is damaged') {
-                // Close any open input fields or quick picks
-                vscode.commands.executeCommand('workbench.action.closeAllInputs');
-                return; // Stop execution
+            if (error instanceof Error) {
+                await vscode.window.showErrorMessage(error.message, { modal: true });
+            } else {
+                await vscode.window.showErrorMessage('An unknown error occurred.', { modal: true });
             }
-            throw error; // Rethrow other errors
+            vscode.commands.executeCommand('workbench.action.closeAllInputs');
+            return; // Stop execution
         }
     }
 
     private findVariableInOtherActions(varName: string, currentAction: Action): { varDetails: Variable, action: Action; } | null {
+        const currentGroup = currentAction.group || 'Ungrouped';
+
         for (const action of this.allActions) {
             if (action !== currentAction && action.variables && action.variables[varName]) {
-                return { varDetails: action.variables[varName], action };
+                const actionGroup = action.group || 'Ungrouped';
+
+                if (!currentAction.searchVariablesInCurrentGroup || (currentAction.searchVariablesInCurrentGroup && actionGroup === currentGroup)) {
+                    return { varDetails: action.variables[varName], action };
+                }
             }
         }
         return null;
