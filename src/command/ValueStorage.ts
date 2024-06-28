@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Action } from '../config/Configuration';
+import { Action, Variable } from '../config/Configuration';
 
 interface StorageData {
     [actionLabel: string]: {
@@ -19,8 +19,7 @@ export class ValueStorage {
         }
         return path.join(workspaceFolders[0].uri.fsPath, this.STORAGE_FILE);
     }
-
-    private static readStorageFile(): StorageData | null {
+    private static readStorageFile(): StorageData {
         const filePath = this.getStorageFilePath();
         if (!fs.existsSync(filePath)) {
             return {};
@@ -30,10 +29,16 @@ export class ValueStorage {
             return JSON.parse(data) as StorageData;
         } catch (error) {
             this.showErrorMessage();
-            return null;
+            throw new Error('Storage file is damaged');
         }
     }
 
+    private static showErrorMessage(): void {
+        vscode.window.showErrorMessage(
+            "'.vscode/terminal_snippets_temp.jsonc' is damaged. Please fix or delete it (it will be recreated next time).",
+            { modal: true }
+        );
+    }
     private static writeStorageFile(data: StorageData): void {
         const filePath = this.getStorageFilePath();
         const dirPath = path.dirname(filePath);
@@ -43,14 +48,7 @@ export class ValueStorage {
         fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
     }
 
-    private static showErrorMessage(): void {
-        vscode.window.showErrorMessage(
-            "'.vscode/terminal_snippets_temp.jsonc' is damaged. Please fix or delete it (it will be recreated next time).",
-            { modal: false }
-        );
-    }
-
-    public static storeValues(action: Action, variables: { [key: string]: string }): void {
+    public static storeValues(action: Action, variables: { [key: string]: string | string[] }): void {
         const data = this.readStorageFile();
         if (data === null) return; // Don't store if file is damaged
 
@@ -61,19 +59,7 @@ export class ValueStorage {
         }
 
         for (const [varName, value] of Object.entries(variables)) {
-            const varDetails = action.variables?.[varName];
-            if (varDetails && varDetails.options) {
-                if (!data[label][varName]) {
-                    data[label][varName] = varDetails.options.slice();
-                }
-                if (Array.isArray(data[label][varName])) {
-                    if (!(data[label][varName] as string[]).includes(value)) {
-                        (data[label][varName] as string[]).unshift(value);
-                    }
-                }
-            } else {
-                data[label][varName] = value;
-            }
+            data[label][varName] = value;
         }
 
         this.writeStorageFile(data);
@@ -81,20 +67,28 @@ export class ValueStorage {
 
     public static getStoredValues(label: string): { [key: string]: string | string[] } | undefined | null {
         const data = this.readStorageFile();
-        if (data === null) return null; // Indicate damaged file
+        if (data === null) return null;
         return data[label];
     }
 
-    public static getStoredValueForVariable(varName: string): string | string[] | undefined {
+    public static getStoredValueForVariable(action: Action, varName: string): string | string[] | undefined {
         const data = this.readStorageFile();
         if (data === null) return undefined;
 
-        for (const actionData of Object.values(data)) {
-            if (actionData[varName] !== undefined) {
-                return actionData[varName];
+        const actionLabel = action.label || action.command;
+        return data[actionLabel]?.[varName];
+    }
+
+    public static updateDefaultValue(action: Action, varName: string, variable: Variable): void {
+        if (variable.defaultValue?.setStoredValueAsDefault) {
+            const storedValue = this.getStoredValueForVariable(action, varName);
+            if (storedValue !== undefined) {
+                if (Array.isArray(storedValue) && storedValue.length > 0) {
+                    variable.defaultValue.value = storedValue[0];
+                } else if (typeof storedValue === 'string') {
+                    variable.defaultValue.value = storedValue;
+                }
             }
         }
-
-        return undefined;
     }
 }

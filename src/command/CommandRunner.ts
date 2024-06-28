@@ -10,7 +10,8 @@ export class CommandRunner {
     allActions: Action[];
 
     constructor() {
-        this.allActions = loadActions();
+        this.allActions = loadActions(); // Initialize allActions in the constructor
+
         vscode.window.onDidCloseTerminal(terminal => {
             for (const [key, value] of this.terminals.entries()) {
                 if (value === terminal) {
@@ -32,73 +33,119 @@ export class CommandRunner {
     }
 
     async showQuickPick(action: Action) {
-        const substituter = new VariableSubstituter(action);
-        let command = substituter.substitute(action.command);
+        try {
+            // Reload actions and stored values
+            this.allActions = loadActions();
 
-        const variableValues: { [key: string]: { value: string, sourceAction: Action } } = {};
+            const substituter = new VariableSubstituter(action);
+            let command = substituter.substitute(action.command);
 
-        if (action.variables) {
-            const variableRegex = /\$\w+/g;
-            const variablesInOrder = command.match(variableRegex) || [];
+            const variableValues: { [key: string]: { value: string, sourceAction: Action; }; } = {};
 
-            for (const varName of variablesInOrder) {
-                let varDetails = action.variables[varName];
-                let sourceAction = action;
+            if (action.variables) {
+                const variableRegex = /\$\w+/g;
+                const variablesInOrder = command.match(variableRegex) || [];
 
-                if (!varDetails) {
-                    const result = this.findVariableInOtherActions(varName, action);
-                    if (result) {
-                        varDetails = result.varDetails;
-                        sourceAction = result.action;
+                for (const varName of variablesInOrder) {
+                    let varDetails = action.variables[varName];
+                    let sourceAction = action;
+
+                    if (!varDetails) {
+                        const result = this.findVariableInOtherActions(varName, action);
+                        if (result) {
+                            varDetails = result.varDetails;
+                            sourceAction = result.action;
+                        } else {
+                            vscode.window.showErrorMessage(`Variable ${varName} not found`);
+                            return;
+                        }
+                    }
+
+                    let value: string | undefined;
+
+                    // Update stored options if applicable
+                    const storedValue = ValueStorage.getStoredValueForVariable(sourceAction, varName);
+                    if (storedValue !== undefined && Array.isArray(storedValue) && varDetails.options) {
+                        varDetails.options = storedValue;
+                    }
+
+                    if (varDetails.defaultValue?.skipDefault) {
+                        if (storedValue !== undefined) {
+                            value = Array.isArray(storedValue) ? storedValue[0] : storedValue;
+                        } else if (varDetails.defaultValue.value !== undefined) {
+                            value = varDetails.defaultValue.value;
+                        } else {
+                            value = await this.handleVariable(varDetails);
+                        }
                     } else {
-                        vscode.window.showErrorMessage(`Variable ${varName} not found`);
-                        return;
+                        if (varDetails.defaultValue?.setStoredValueAsDefault) {
+                            ValueStorage.updateDefaultValue(sourceAction, varName, varDetails);
+                        }
+                        value = await this.handleVariable(varDetails);
+                    }
+
+                    if (value === undefined) {
+                        return; // Exit if a variable is not set
+                    }
+
+                    command = command.replace(varName, value);
+                    variableValues[varName] = { value, sourceAction };
+                }
+            }
+
+            await this.executeCommand(command, action);
+
+            // Store values after execution
+            const actionVariables: { [key: string]: { [key: string]: string | string[]; }; } = {};
+
+            for (const [varName, { value, sourceAction }] of Object.entries(variableValues)) {
+                const actionLabel = sourceAction.label || sourceAction.command;
+                if (!actionVariables[actionLabel]) {
+                    actionVariables[actionLabel] = {};
+                }
+
+                // If the variable has options, store as an array
+                if (sourceAction.variables?.[varName]?.options) {
+                    const storedValues = ValueStorage.getStoredValueForVariable(sourceAction, varName) as string[] | undefined;
+                    if (Array.isArray(storedValues)) {
+                        // Add the new value to the beginning of the array and remove duplicates
+                        actionVariables[actionLabel][varName] = [value, ...storedValues.filter(v => v !== value)];
+                    } else {
+                        actionVariables[actionLabel][varName] = [value];
+                    }
+                } else {
+                    actionVariables[actionLabel][varName] = value;
+                }
+            }
+
+            for (const [actionLabel, variables] of Object.entries(actionVariables)) {
+                if (Object.keys(variables).length > 0) {
+                    const currentAction = this.allActions.find(a => (a.label || a.command) === actionLabel);
+                    if (currentAction) {
+                        const variablesToStore = Object.entries(variables).reduce((acc, [varName, value]) => {
+                            if (currentAction.variables?.[varName]?.storeValue) {
+                                acc[varName] = value;
+                            }
+                            return acc;
+                        }, {} as { [key: string]: string | string[]; });
+
+                        if (Object.keys(variablesToStore).length > 0) {
+                            ValueStorage.storeValues(currentAction, variablesToStore);
+                        }
                     }
                 }
-
-                const storedValues = ValueStorage.getStoredValues(sourceAction.label || sourceAction.command);
-                if (storedValues === null) {
-                    return; // Exit if storage file is damaged
-                }
-
-                if (varDetails.storeValue && storedValues && storedValues[varName]) {
-                    if (Array.isArray(storedValues[varName])) {
-                        varDetails.options = storedValues[varName] as string[];
-                    } else {
-                        varDetails.defaultValue = { value: storedValues[varName] as string };
-                    }
-                }
-
-                const value = await this.handleVariable(varDetails);
-                if (value === undefined) {
-                    return; // Exit if a variable is not set
-                }
-                command = command.replace(varName, value);
-                variableValues[varName] = { value, sourceAction };
             }
-        }
-
-        await this.executeCommand(command, action);
-
-        // Store values after execution
-        const actionVariables: { [key: string]: { [key: string]: string } } = {};
-
-        for (const [varName, { value, sourceAction }] of Object.entries(variableValues)) {
-            const actionLabel = sourceAction.label || sourceAction.command;
-            if (!actionVariables[actionLabel]) {
-                actionVariables[actionLabel] = {};
+        } catch (error) {
+            if (error instanceof Error && error.message === 'Storage file is damaged') {
+                // Close any open input fields or quick picks
+                vscode.commands.executeCommand('workbench.action.closeAllInputs');
+                return; // Stop execution
             }
-            actionVariables[actionLabel][varName] = value;
-        }
-
-        for (const [actionLabel, variables] of Object.entries(actionVariables)) {
-            if (Object.keys(variables).length > 0) {
-                ValueStorage.storeValues(this.allActions.find(a => (a.label || a.command) === actionLabel)!, variables);
-            }
+            throw error; // Rethrow other errors
         }
     }
 
-    private findVariableInOtherActions(varName: string, currentAction: Action): { varDetails: Variable, action: Action } | null {
+    private findVariableInOtherActions(varName: string, currentAction: Action): { varDetails: Variable, action: Action; } | null {
         for (const action of this.allActions) {
             if (action !== currentAction && action.variables && action.variables[varName]) {
                 return { varDetails: action.variables[varName], action };
@@ -177,30 +224,30 @@ export class CommandRunner {
     async askUserToPickString(variable: Variable): Promise<string | undefined> {
         return new Promise((resolve) => {
             const quickPick = vscode.window.createQuickPick();
-            
+
             // Add defaultValue to options if it's not already there
             const options = variable.options || [];
             if (variable.defaultValue?.value && !options.includes(variable.defaultValue.value)) {
                 options.unshift(variable.defaultValue.value);
             }
-            
+
             quickPick.items = options.map(option => ({ label: option }));
             quickPick.placeholder = variable.placeholder;
             quickPick.ignoreFocusOut = true;
-    
+
             // Set default value
             if (variable.defaultValue?.value) {
                 quickPick.value = variable.defaultValue.value;
                 // Pre-select the default value
                 quickPick.selectedItems = [{ label: variable.defaultValue.value }];
             }
-    
+
             const validateInput = (value: string) => {
                 const isValid = variable.allowEmptyValue || value.trim() !== '';
                 quickPick.title = isValid ? undefined : 'Blank value not allowed';
                 return isValid;
             };
-    
+
             quickPick.onDidChangeValue((value) => {
                 validateInput(value);
                 if (value.trim() === '' && variable.defaultValue?.value) {
@@ -212,16 +259,16 @@ export class CommandRunner {
                     quickPick.items = [customItem, ...existingItems];
                 }
             });
-    
+
             quickPick.onDidAccept(() => {
                 const selectedItems = quickPick.selectedItems;
                 let value = selectedItems.length > 0 ? selectedItems[0].label : quickPick.value;
-    
+
                 // If the value is empty and we have a default value, use the default
                 if (value.trim() === '' && variable.defaultValue?.value) {
                     value = variable.defaultValue.value;
                 }
-    
+
                 if (validateInput(value)) {
                     if (variable.allowAdditionalValue || options.includes(value)) {
                         quickPick.hide();
@@ -229,7 +276,7 @@ export class CommandRunner {
                     }
                 }
             });
-    
+
             quickPick.onDidHide(() => resolve(undefined));
             quickPick.show();
         });

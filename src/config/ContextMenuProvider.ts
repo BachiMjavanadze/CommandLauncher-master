@@ -30,6 +30,9 @@ export class ContextMenuProvider {
     }
 
     private async showContextMenu(uri: vscode.Uri) {
+        // Reload actions to ensure we have the latest configuration
+        this.allActions = loadActions();
+
         const actions = this.allActions.filter(action => action.isContextMenuCommand);
         const groups = this.groupActions(actions);
 
@@ -77,77 +80,120 @@ export class ContextMenuProvider {
     }
 
     private async runCommand(action: Action, uri: vscode.Uri) {
-        const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-        const baseFolderAbsolutePath = workspaceFolder ? workspaceFolder.uri.fsPath : undefined;
-        const clickedItemAbsolutePath = uri.fsPath;
-        const clickedItemRelativePath = workspaceFolder ? vscode.workspace.asRelativePath(uri) : clickedItemAbsolutePath;
-
-        let command = action.command
-            .replace(/\$clickedItemAbsolutePath/g, clickedItemAbsolutePath)
-            .replace(/\$clickedItemRelativePath/g, clickedItemRelativePath)
-            .replace(/\$baseFolderAbsolutePath/g, baseFolderAbsolutePath || '');
-
-        const variableValues: { [key: string]: { value: string, sourceAction: Action } } = {};
-
-        if (action.variables) {
-            const variableRegex = /\$\w+/g;
-            const variablesInOrder = command.match(variableRegex) || [];
-
-            for (const varName of variablesInOrder) {
-                let varDetails = action.variables[varName];
-                let sourceAction = action;
-
-                if (!varDetails) {
-                    const result = this.findVariableInOtherActions(varName, action);
-                    if (result) {
-                        varDetails = result.varDetails;
-                        sourceAction = result.action;
+        try {
+            // Reload actions to ensure we have the latest configuration
+            this.allActions = loadActions();
+    
+            const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+            const baseFolderAbsolutePath = workspaceFolder ? workspaceFolder.uri.fsPath : undefined;
+            const clickedItemAbsolutePath = uri.fsPath;
+            const clickedItemRelativePath = workspaceFolder ? vscode.workspace.asRelativePath(uri) : clickedItemAbsolutePath;
+    
+            let command = action.command
+                .replace(/\$clickedItemAbsolutePath/g, clickedItemAbsolutePath)
+                .replace(/\$clickedItemRelativePath/g, clickedItemRelativePath)
+                .replace(/\$baseFolderAbsolutePath/g, baseFolderAbsolutePath || '');
+    
+            const variableValues: { [key: string]: { value: string, sourceAction: Action } } = {};
+    
+            if (action.variables) {
+                const variableRegex = /\$\w+/g;
+                const variablesInOrder = command.match(variableRegex) || [];
+    
+                for (const varName of variablesInOrder) {
+                    let varDetails = action.variables[varName];
+                    let sourceAction = action;
+    
+                    if (!varDetails) {
+                        const result = this.findVariableInOtherActions(varName, action);
+                        if (result) {
+                            varDetails = result.varDetails;
+                            sourceAction = result.action;
+                        } else {
+                            vscode.window.showErrorMessage(`Variable ${varName} not found`);
+                            return;
+                        }
+                    }
+    
+                    // Update stored options if applicable
+                    const storedValue = ValueStorage.getStoredValueForVariable(sourceAction, varName);
+                    if (storedValue !== undefined && Array.isArray(storedValue) && varDetails.options) {
+                        varDetails.options = storedValue;
+                    }
+    
+                    let value: string | undefined;
+    
+                    if (varDetails.defaultValue?.skipDefault) {
+                        if (storedValue !== undefined) {
+                            value = Array.isArray(storedValue) ? storedValue[0] : storedValue;
+                        } else if (varDetails.defaultValue.value !== undefined) {
+                            value = varDetails.defaultValue.value;
+                        } else {
+                            value = await this.handleVariable(varDetails);
+                        }
                     } else {
-                        vscode.window.showErrorMessage(`Variable ${varName} not found`);
-                        return;
+                        if (varDetails.defaultValue?.setStoredValueAsDefault) {
+                            ValueStorage.updateDefaultValue(sourceAction, varName, varDetails);
+                        }
+                        value = await this.handleVariable(varDetails);
+                    }
+    
+                    if (value === undefined) {
+                        return; // Exit if a variable is not set
+                    }
+                    command = command.replace(varName, value);
+                    variableValues[varName] = { value, sourceAction };
+                }
+            }
+    
+            await this.commandRunner.executeCommand(command, action);
+    
+            // Store values after execution
+            const actionVariables: { [key: string]: { [key: string]: string | string[] } } = {};
+    
+            for (const [varName, { value, sourceAction }] of Object.entries(variableValues)) {
+                const actionLabel = sourceAction.label || sourceAction.command;
+                if (!actionVariables[actionLabel]) {
+                    actionVariables[actionLabel] = {};
+                }
+                
+                // If the variable has options, store as an array
+                if (sourceAction.variables?.[varName]?.options) {
+                    const storedValues = ValueStorage.getStoredValueForVariable(sourceAction, varName) as string[] | undefined;
+                    if (Array.isArray(storedValues)) {
+                        // Add the new value to the beginning of the array and remove duplicates
+                        actionVariables[actionLabel][varName] = [value, ...storedValues.filter(v => v !== value)];
+                    } else {
+                        actionVariables[actionLabel][varName] = [value];
+                    }
+                } else {
+                    actionVariables[actionLabel][varName] = value;
+                }
+            }
+    
+            for (const [actionLabel, variables] of Object.entries(actionVariables)) {
+                if (Object.keys(variables).length > 0) {
+                    const currentAction = this.allActions.find(a => (a.label || a.command) === actionLabel);
+                    if (currentAction) {
+                        const variablesToStore = Object.entries(variables).reduce((acc, [varName, value]) => {
+                            if (currentAction.variables?.[varName]?.storeValue) {
+                                acc[varName] = value;
+                            }
+                            return acc;
+                        }, {} as { [key: string]: string | string[] });
+    
+                        if (Object.keys(variablesToStore).length > 0) {
+                            ValueStorage.storeValues(currentAction, variablesToStore);
+                        }
                     }
                 }
-
-                const storedValues = ValueStorage.getStoredValues(sourceAction.label || sourceAction.command);
-                if (storedValues === null) {
-                    this.quickPick.hide(); // Close the quick pick
-                    return; // Exit if storage file is damaged
-                }
-
-                if (varDetails.storeValue && storedValues && storedValues[varName]) {
-                    if (Array.isArray(storedValues[varName])) {
-                        varDetails.options = storedValues[varName] as string[];
-                    } else {
-                        varDetails.defaultValue = { value: storedValues[varName] as string };
-                    }
-                }
-
-                const value = await this.handleVariable(varDetails);
-                if (value === undefined) {
-                    return; // Exit if a variable is not set
-                }
-                command = command.replace(varName, value);
-                variableValues[varName] = { value, sourceAction };
             }
-        }
-
-        await this.commandRunner.executeCommand(command, action);
-
-        // Store values after execution
-        const actionVariables: { [key: string]: { [key: string]: string } } = {};
-
-        for (const [varName, { value, sourceAction }] of Object.entries(variableValues)) {
-            const actionLabel = sourceAction.label || sourceAction.command;
-            if (!actionVariables[actionLabel]) {
-                actionVariables[actionLabel] = {};
+        } catch (error) {
+            if (error instanceof Error && error.message === 'Storage file is damaged') {
+                this.quickPick.hide(); // Close the quick pick
+                return; // Stop execution
             }
-            actionVariables[actionLabel][varName] = value;
-        }
-
-        for (const [actionLabel, variables] of Object.entries(actionVariables)) {
-            if (Object.keys(variables).length > 0) {
-                ValueStorage.storeValues(this.allActions.find(a => (a.label || a.command) === actionLabel)!, variables);
-            }
+            throw error; // Rethrow other errors
         }
     }
 
