@@ -1,4 +1,3 @@
-// ContextMenuProvider.ts
 import * as vscode from 'vscode';
 import { CommandRunner } from '../command/CommandRunner';
 import { loadActions } from './JsonDecoder';

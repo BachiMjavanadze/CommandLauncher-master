@@ -2,7 +2,7 @@
   "name": "terminal-snippets",
   "displayName": "Terminal Snippets",
   "description": "Runs predefined terminal commands with various types of arguments.",
-  "version": "0.0.3",
+  "version": "0.0.5",
   "license": "MIT",
   "publisher": "Bachi Mjavanadze",
   "repository": {
@@ -40,6 +40,11 @@
       {
         "command": "terminalSnippets.showContextMenu",
         "title": "Terminal Snippets"
+      },
+      {
+        "command": "terminalSnippets.runToggler",
+        "title": "Run Toggler Command",
+        "icon": "$(sync)"
       }
     ],
     "viewsContainers": {
@@ -78,6 +83,11 @@
           "command": "terminalSnippets.runLast",
           "when": "view == snippets && viewItem == hasCommand",
           "group": "inline"
+        },
+        {
+          "command": "terminalSnippets.runToggler",
+          "when": "view == snippets && viewItem == hasTogglerCommand",
+          "group": "inline"
         }
       ],
       "explorer/context": [
@@ -88,7 +98,7 @@
       ]
     },
     "configuration": {
-      "title": "Actions",
+      "title": "Terminal Snippets",
       "properties": {
         "terminalSnippets.innerVariables": {
           "type": "object",
@@ -210,6 +220,57 @@
                 "default": false
               }
             }
+          }
+        },
+        "terminalSnippets.TogglerCommands": {
+          "type": "array",
+          "description": "Array of toggler commands.",
+          "default": [],
+          "items": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": "string",
+                "description": "Group name for the toggler commands"
+              },
+              "command1": {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "description": "Command to execute for the first state"
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Label to display for the first state"
+                  },
+                  "runTask": {
+                    "type": "string",
+                    "description": "Task to run instead of command"
+                  }
+                },
+                "required": ["label"]
+              },
+              "command2": {
+                "type": "object",
+                "properties": {
+                  "command": {
+                    "type": "string",
+                    "description": "Command to execute for the second state"
+                  },
+                  "label": {
+                    "type": "string",
+                    "description": "Label to display for the second state"
+                  },
+                  "runTask": {
+                    "type": "string",
+                    "description": "Task to run instead of command"
+                  }
+                },
+                "required": ["label"]
+              }
+            },
+            "required": ["group", "command1", "command2"]
           }
         }
       }

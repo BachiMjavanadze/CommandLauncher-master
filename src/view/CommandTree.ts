@@ -1,6 +1,7 @@
 import { Event, EventEmitter, ProviderResult, TreeDataProvider, TreeItem, TreeItemCollapsibleState } from "vscode";
 import { Action } from "../config/Configuration";
 import { loadItems } from "./CommandTreeBuilder";
+import { TogglerCommand } from "../config/TogglerCommand";
 
 export class CommandTreeProvider implements TreeDataProvider<Item> {
 
@@ -33,14 +34,18 @@ export class CommandTreeProvider implements TreeDataProvider<Item> {
 export class Item extends TreeItem {
     children: Item[] | undefined;
     action: Action | undefined;
+    togglerCommand: TogglerCommand | undefined;
 
-    constructor(label: string, action?: Action, children?: Item[]) {
+    constructor(label: string, action?: Action, children?: Item[], togglerCommand?: TogglerCommand) {
         super(
             label,
             children === undefined ? TreeItemCollapsibleState.None :
                 TreeItemCollapsibleState.Expanded);
         this.children = children;
         this.action = action;
-        this.contextValue = (children === undefined || !children) ? 'hasCommand' : undefined;
+        this.togglerCommand = togglerCommand;
+        this.contextValue = (children === undefined || !children) ? 
+            (togglerCommand ? 'hasTogglerCommand' : 'hasCommand') : 
+            undefined;
     }
 }

@@ -13,7 +13,7 @@ interface StorageData {
 }
 
 export class ValueStorage {
-    private static readonly STORAGE_FILE = '.vscode/terminal_snippets_temp.jsonc';
+    private static readonly STORAGE_FILE = '.vscode/terminal_snippets_temp.json';
 
     private static getStorageFilePath(): string {
         const workspaceFolders = vscode.workspace.workspaceFolders;
