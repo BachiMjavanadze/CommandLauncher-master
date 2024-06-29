@@ -264,7 +264,7 @@
                   },
                   "runTask": {
                     "type": "string",
-                    "description": "Task to run instead of command"
+                    "description": "VSCode task or built-in command to run instead of command"
                   }
                 },
                 "required": [
@@ -284,7 +284,7 @@
                   },
                   "runTask": {
                     "type": "string",
-                    "description": "Task to run instead of command"
+                    "description": "VSCode task or built-in command to run instead of command"
                   }
                 },
                 "required": [

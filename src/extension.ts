@@ -52,14 +52,9 @@ export function activate(context: vscode.ExtensionContext) {
                 const tc = item.togglerCommand;
                 const isFirstState = toggleState(tc.group, tc.command1.label);
                 const currentCommand = isFirstState ? tc.command1 : tc.command2;
-                
-                if (currentCommand.runTask === '$interruptSignal') {
-                    const terminal = commandRunner.getTogglerTerminal(tc);
-                    if (terminal) {
-                        terminal.sendText('\x03');
-                    } else {
-                        vscode.window.showErrorMessage("No active terminal found for this toggler command.");
-                    }
+
+                if (currentCommand.runTask) {
+                    await commandRunner.executeTogglerCommand(currentCommand.runTask, tc);
                 } else if (currentCommand.command) {
                     await commandRunner.executeTogglerCommand(currentCommand.command, tc);
                 }
@@ -80,14 +75,9 @@ export function activate(context: vscode.ExtensionContext) {
 
             const isFirstState = toggleState(toggler.group, toggler.command1.label);
             const currentCommand = isFirstState ? toggler.command1 : toggler.command2;
-            
-            if (currentCommand.runTask === '$interruptSignal') {
-                const terminal = commandRunner.getTogglerTerminal(toggler);
-                if (terminal) {
-                    terminal.sendText('\x03');
-                } else {
-                    vscode.window.showErrorMessage("No active terminal found for this toggler command.");
-                }
+
+            if (currentCommand.runTask) {
+                await commandRunner.executeTogglerCommand(currentCommand.runTask, toggler);
             } else if (currentCommand.command) {
                 await commandRunner.executeTogglerCommand(currentCommand.command, toggler);
             }
@@ -108,4 +98,4 @@ export function activate(context: vscode.ExtensionContext) {
     taskbarProvider.refresh();
 }
 
-export function deactivate() {}
+export function deactivate() { }

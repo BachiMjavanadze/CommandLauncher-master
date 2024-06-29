@@ -1,4 +1,3 @@
-// CommandTree.ts
 import { Event, EventEmitter, ProviderResult, TreeDataProvider, TreeItem, TreeItemCollapsibleState } from "vscode";
 import * as vscode from 'vscode';
 import { Action } from "../config/Configuration";

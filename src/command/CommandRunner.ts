@@ -1,4 +1,3 @@
-// CommandRunner.ts
 import * as vscode from 'vscode';
 import { Action, Variable } from "../config/Configuration";
 import { VariableSubstituter } from "./VariableParser";
@@ -353,8 +352,23 @@ export class CommandRunner {
             this.togglerTerminals.set(terminalKey, terminal);
         }
 
-        terminal.sendText(text);
-        terminal.show();
+        if (text.startsWith('$')) {
+            // Handle special commands like $interruptSignal
+            if (text === '$interruptSignal') {
+                terminal.sendText('\x03');
+            }
+        } else if (text.startsWith('workbench.')) {
+            // Handle VSCode built-in commands
+            await vscode.commands.executeCommand(text);
+        } else {
+            // Execute regular terminal command
+            terminal.sendText(text);
+        }
+
+        // Only show the terminal for non-workbench commands
+        if (!text.startsWith('workbench.')) {
+            terminal.show();
+        }
     }
 
     getTogglerTerminal(toggler: TogglerCommand): vscode.Terminal | undefined {
