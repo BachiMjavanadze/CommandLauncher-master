@@ -67,7 +67,17 @@ export class CommandRunner {
             this.allActions = loadActions();
 
             const substituter = new VariableSubstituter(action);
-            let command = substituter.substitute(action.command);
+            let command;
+            try {
+                command = await substituter.substitute(action.command);
+            } catch (error) {
+                if (error instanceof Error && error.message === 'Folder selection cancelled') {
+                    // User cancelled the folder selection, so we should cancel the whole command execution
+                    this.isExecutingCommand = false;
+                    return;
+                }
+                throw error; // Re-throw other errors
+            }
 
             const variableValues: { [key: string]: { value: string, sourceAction: Action; }; } = {};
 
@@ -211,7 +221,7 @@ export class CommandRunner {
 
     async executeCommand(text: string, action: Action) {
         const substituter = new VariableSubstituter(action);
-        text = substituter.substitute(text);
+        text = await substituter.substitute(text);
 
         this.actions.set(action, text);
         const terminalKey = action.label || action.command;
@@ -374,5 +384,44 @@ export class CommandRunner {
     getTogglerTerminal(toggler: TogglerCommand): vscode.Terminal | undefined {
         const terminalKey = `${toggler.group}:${toggler.command1.label}`;
         return this.togglerTerminals.get(terminalKey);
+    }
+
+    private async showFolderPicker(placeholder: string): Promise<string | undefined> {
+        const quickPick = vscode.window.createQuickPick();
+        quickPick.placeholder = placeholder;
+        quickPick.ignoreFocusOut = true;
+
+        const folderButton: vscode.QuickInputButton = {
+            iconPath: new vscode.ThemeIcon('folder'),
+            tooltip: 'Select folder'
+        };
+
+        quickPick.buttons = [folderButton];
+
+        return new Promise((resolve) => {
+            quickPick.onDidAccept(() => {
+                const value = quickPick.value;
+                quickPick.hide();
+                resolve(value);
+            });
+
+            quickPick.onDidHide(() => resolve(undefined));
+
+            quickPick.onDidTriggerButton(async (button) => {
+                if (button === folderButton) {
+                    const folderUri = await vscode.window.showOpenDialog({
+                        canSelectFiles: false,
+                        canSelectFolders: true,
+                        canSelectMany: false,
+                        openLabel: 'Select Root Folder'
+                    });
+                    if (folderUri && folderUri[0]) {
+                        quickPick.value = folderUri[0].fsPath;
+                    }
+                }
+            });
+
+            quickPick.show();
+        });
     }
 }

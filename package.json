@@ -106,6 +106,10 @@
           "default": {},
           "additionalProperties": {
             "type": "string"
+          },
+          "$chooseRootFolder": {
+            "type": "string",
+            "description": "Choose a root folder"
           }
         },
         "terminalSnippets.actions": {
