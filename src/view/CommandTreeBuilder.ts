@@ -1,4 +1,3 @@
-// CommandTreeBuilder.ts
 import { Action } from "../config/Configuration";
 import { loadActions } from "../config/JsonDecoder";
 import { CommandTreeProvider, Item } from "./CommandTree";
@@ -39,32 +38,42 @@ function findGroups(actions: Action[], togglerCommands: TogglerCommand[]): Map<s
 }
 
 function buildItems(groups: Map<string, (Action | TogglerCommand)[]>): Item[] {
-    const items: Item[] = [];
-    const sortedGroups = new Map([...groups.entries()].sort((a, b) => {
-        if (a[0] === 'Ungrouped') return 1;
-        if (b[0] === 'Ungrouped') return -1;
-        return a[0].localeCompare(b[0]);
-    }));
+  const items: Item[] = [];
+  const sortedGroups = new Map([...groups.entries()].sort((a, b) => {
+      if (a[0] === 'Ungrouped') return 1;
+      if (b[0] === 'Ungrouped') return -1;
+      return a[0].localeCompare(b[0]);
+  }));
 
-    sortedGroups.forEach((groupItems, groupName) => {
-        const children = groupItems.map(item => {
-            if ('command1' in item && 'command2' in item) {
-                // This is a TogglerCommand
-                const isFirstState = !getTogglerState(groupName, item.command1.label);
-                return new Item(
-                    isFirstState ? item.command1.label : item.command2.label,
-                    undefined,
-                    undefined,
-                    item
-                );
-            } else {
-                // This is a regular Action
-                return new Item(buildLabel(item as Action), item as Action);
-            }
-        });
-        items.push(new Item(groupName, undefined, children));
-    });
-    return items;
+  sortedGroups.forEach((groupItems, groupName) => {
+      const children = groupItems
+          .filter(item => {
+              if ('command1' in item) {
+                  return item.showOnExplorer !== false;
+              } else {
+                  return (item as Action).showOnExplorer !== false;
+              }
+          })
+          .map(item => {
+              if ('command1' in item && 'command2' in item) {
+                  // This is a TogglerCommand
+                  const isFirstState = !getTogglerState(groupName, item.command1.label);
+                  return new Item(
+                      isFirstState ? item.command1.label : item.command2.label,
+                      undefined,
+                      undefined,
+                      item
+                  );
+              } else {
+                  // This is a regular Action
+                  return new Item(buildLabel(item as Action), item as Action);
+              }
+          });
+      if (children.length > 0) {
+          items.push(new Item(groupName, undefined, children));
+      }
+  });
+  return items;
 }
 
 function buildLabel(action: Action) {

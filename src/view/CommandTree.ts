@@ -1,11 +1,14 @@
+// CommandTree.ts
 import { Event, EventEmitter, ProviderResult, TreeDataProvider, TreeItem, TreeItemCollapsibleState } from "vscode";
 import * as vscode from 'vscode';
 import { Action } from "../config/Configuration";
 import { loadItems } from "./CommandTreeBuilder";
-import { TogglerCommand } from "../config/TogglerCommand";
+import { TogglerCommand, getTogglerState, setTogglerState } from "../config/TogglerCommand";
+import { TaskbarItemProvider } from "../config/TaskbarItemProvider";
 
 export class CommandTreeProvider implements TreeDataProvider<Item> {
     data: Item[];
+    private taskbarProvider: TaskbarItemProvider | undefined;
 
     constructor(items: Item[]) {
         this.data = items;
@@ -17,6 +20,10 @@ export class CommandTreeProvider implements TreeDataProvider<Item> {
     refresh() {
         this.data = loadItems();
         this._onDidChangeTreeData.fire();
+    }
+
+    setTaskbarProvider(provider: TaskbarItemProvider) {
+        this.taskbarProvider = provider;
     }
 
     private getGlobalSettings(): { enableRunAndRunLastIcons: boolean; enableTogglerIcon: boolean } {
@@ -41,6 +48,9 @@ export class CommandTreeProvider implements TreeDataProvider<Item> {
                 element.contextValue = undefined;
             }
         } else if (element.togglerCommand) {
+            const isFirstState = !getTogglerState(element.togglerCommand.group, element.togglerCommand.command1.label);
+            element.label = isFirstState ? element.togglerCommand.command1.label : element.togglerCommand.command2.label;
+            
             element.command = !globalSettings.enableTogglerIcon ? {
                 command: 'terminalSnippets.runToggler',
                 title: 'Run Toggler Command',
@@ -52,6 +62,11 @@ export class CommandTreeProvider implements TreeDataProvider<Item> {
                 element.contextValue = 'hasTogglerCommand';
             } else {
                 element.contextValue = undefined;
+            }
+
+            // Update taskbar when toggler state changes
+            if (this.taskbarProvider) {
+                this.taskbarProvider.updateTogglerState(element.togglerCommand);
             }
         }
         
@@ -87,7 +102,6 @@ export class Item extends TreeItem {
         this.action = action;
         this.togglerCommand = togglerCommand;
         
-        // Explicitly set an empty tooltip
         this.tooltip = '';
 
         if (action) {

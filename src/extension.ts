@@ -1,18 +1,25 @@
-// extension.ts
 import * as vscode from 'vscode';
 import { CommandRunner } from './command/CommandRunner';
-import { Item } from './view/CommandTree';
+import { Item, CommandTreeProvider } from './view/CommandTree';
 import { buildCommandTreeProvider } from './view/CommandTreeBuilder';
 import { ContextMenuProvider } from './config/ContextMenuProvider';
-import { TogglerCommand, toggleState } from './config/TogglerCommand';
+import { TogglerCommand, toggleState, setTogglerState } from './config/TogglerCommand';
+import { TaskbarItemProvider } from './config/TaskbarItemProvider';
+import { Action } from './config/Configuration';
+
+let taskbarProvider: TaskbarItemProvider;
+let treeProvider: CommandTreeProvider;
 
 export function activate(context: vscode.ExtensionContext) {
     const commandRunner = new CommandRunner();
-    const provider = buildCommandTreeProvider();
+    treeProvider = buildCommandTreeProvider();
     const contextMenuProvider = new ContextMenuProvider(commandRunner);
+    taskbarProvider = new TaskbarItemProvider(commandRunner);
+
+    treeProvider.setTaskbarProvider(taskbarProvider);
 
     context.subscriptions.push(
-        vscode.window.registerTreeDataProvider('snippets', provider)
+        vscode.window.registerTreeDataProvider('snippets', treeProvider)
     );
 
     context.subscriptions.push(
@@ -28,11 +35,14 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("terminalSnippets.refresh", () => provider.refresh())
+        vscode.commands.registerCommand("terminalSnippets.refresh", () => {
+            treeProvider.refresh();
+            taskbarProvider.refresh();
+        })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand("terminalSnippets.runToggler", (item: Item) => {
+        vscode.commands.registerCommand("terminalSnippets.runToggler", async (item: Item) => {
             if (commandRunner.isExecutingCommand) {
                 vscode.window.showInformationMessage("A command is already running. Please wait for it to finish.");
                 return;
@@ -43,25 +53,59 @@ export function activate(context: vscode.ExtensionContext) {
                 const isFirstState = toggleState(tc.group, tc.command1.label);
                 const currentCommand = isFirstState ? tc.command1 : tc.command2;
                 
-                const terminal = vscode.window.activeTerminal || vscode.window.createTerminal();
-                terminal.show();
-
                 if (currentCommand.runTask === '$interruptSignal') {
-                    vscode.commands.executeCommand('workbench.action.terminal.sendSequence', { text: "\x03" });
+                    const terminal = commandRunner.getTogglerTerminal(tc);
+                    if (terminal) {
+                        terminal.sendText('\x03');
+                    } else {
+                        vscode.window.showErrorMessage("No active terminal found for this toggler command.");
+                    }
                 } else if (currentCommand.command) {
-                    terminal.sendText(currentCommand.command);
+                    await commandRunner.executeTogglerCommand(currentCommand.command, tc);
                 }
 
-                // Update the tree item label
-                item.label = isFirstState ? tc.command1.label : tc.command2.label;
-
-                // Refresh the tree view
-                provider.refresh();
+                // Update both tree view and taskbar
+                taskbarProvider.updateTogglerState(tc);
+                treeProvider.refresh();
             }
         })
     );
 
+    context.subscriptions.push(
+        vscode.commands.registerCommand("terminalSnippets.runTaskbarToggler", async (toggler: TogglerCommand) => {
+            if (commandRunner.isExecutingCommand) {
+                vscode.window.showInformationMessage("A command is already running. Please wait for it to finish.");
+                return;
+            }
+
+            const isFirstState = toggleState(toggler.group, toggler.command1.label);
+            const currentCommand = isFirstState ? toggler.command1 : toggler.command2;
+            
+            if (currentCommand.runTask === '$interruptSignal') {
+                const terminal = commandRunner.getTogglerTerminal(toggler);
+                if (terminal) {
+                    terminal.sendText('\x03');
+                } else {
+                    vscode.window.showErrorMessage("No active terminal found for this toggler command.");
+                }
+            } else if (currentCommand.command) {
+                await commandRunner.executeTogglerCommand(currentCommand.command, toggler);
+            }
+
+            // Update both taskbar and tree view
+            taskbarProvider.updateTogglerState(toggler);
+            treeProvider.refresh();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand("terminalSnippets.runTaskbarAction", (action: Action) => {
+            commandRunner.showQuickPick(action);
+        })
+    );
+
     contextMenuProvider.registerCommands(context);
+    taskbarProvider.refresh();
 }
 
 export function deactivate() {}

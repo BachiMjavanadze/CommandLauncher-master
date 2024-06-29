@@ -218,6 +218,24 @@
                 "description": "Whether this command should appear in the context menu",
                 "type": "boolean",
                 "default": false
+              },
+              "showOnExplorer": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to show the command in the Explorer view"
+              },
+              "placeOnTaskbar": {
+                "type": "object",
+                "properties": {
+                  "label": {
+                    "type": "string",
+                    "description": "Label for the command on the taskbar"
+                  },
+                  "tooltip": {
+                    "type": "string",
+                    "description": "Tooltip for the command on the taskbar"
+                  }
+                }
               }
             }
           }
@@ -272,6 +290,37 @@
                 "required": [
                   "label"
                 ]
+              },
+              "showOnExplorer": {
+                "type": "boolean",
+                "default": true,
+                "description": "Whether to show the command in the Explorer view"
+              },
+              "placeOnTaskbar": {
+                "type": "object",
+                "properties": {
+                  "label1": {
+                    "type": "string",
+                    "description": "Label for the first state on the taskbar"
+                  },
+                  "label2": {
+                    "type": "string",
+                    "description": "Label for the second state on the taskbar"
+                  },
+                  "tooltip1": {
+                    "type": "string",
+                    "description": "Tooltip for the first state on the taskbar"
+                  },
+                  "tooltip2": {
+                    "type": "string",
+                    "description": "Tooltip for the second state on the taskbar"
+                  }
+                }
+              },
+              "isContextMenuCommand": {
+                "description": "Whether this command should appear in the context menu",
+                "type": "boolean",
+                "default": false
               }
             },
             "required": [

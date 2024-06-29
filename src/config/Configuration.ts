@@ -32,6 +32,11 @@ export interface Action {
     isContextMenuCommand?: boolean;
     searchStoredValueInCurrentGroup?: boolean;
     searchVariablesInCurrentGroup?: boolean;
+    showOnExplorer?: boolean;
+    placeOnTaskbar?: {
+        label: string;
+        tooltip: string;
+    };
 }
 
 export interface Variable {

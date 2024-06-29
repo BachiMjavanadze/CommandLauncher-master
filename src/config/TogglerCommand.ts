@@ -10,6 +10,13 @@ export interface TogglerCommand {
     group: string;
     command1: CommandConfig;
     command2: CommandConfig;
+    showOnExplorer?: boolean;
+    placeOnTaskbar?: {
+        label1: string;
+        label2: string;
+        tooltip1: string;
+        tooltip2: string;
+    };
 }
 
 let togglerStates: Map<string, boolean> = new Map();
@@ -29,4 +36,9 @@ export function toggleState(groupName: string, label: string): boolean {
     const newState = !togglerStates.get(key);
     togglerStates.set(key, newState);
     return newState;
+}
+
+export function setTogglerState(groupName: string, label: string, state: boolean) {
+    const key = `${groupName}:${label}`;
+    togglerStates.set(key, state);
 }

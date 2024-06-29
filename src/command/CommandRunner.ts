@@ -4,10 +4,12 @@ import { Action, Variable } from "../config/Configuration";
 import { VariableSubstituter } from "./VariableParser";
 import { ValueStorage } from './ValueStorage';
 import { loadActions } from '../config/JsonDecoder';
+import { TogglerCommand } from '../config/TogglerCommand';
 
 export class CommandRunner {
     actions: Map<Action, string> = new Map<Action, string>();
     terminals: Map<string, vscode.Terminal> = new Map<string, vscode.Terminal>();
+    private togglerTerminals: Map<string, vscode.Terminal> = new Map();
     allActions: Action[];
     private _isExecutingCommand: boolean = false;
 
@@ -340,5 +342,23 @@ export class CommandRunner {
             cwd: action.cwd
         };
         return vscode.window.createTerminal(options);
+    }
+
+    async executeTogglerCommand(text: string, toggler: TogglerCommand) {
+        const terminalKey = `${toggler.group}:${toggler.command1.label}`;
+        let terminal = this.togglerTerminals.get(terminalKey);
+
+        if (!terminal || terminal.exitStatus !== undefined) {
+            terminal = vscode.window.createTerminal(terminalKey);
+            this.togglerTerminals.set(terminalKey, terminal);
+        }
+
+        terminal.sendText(text);
+        terminal.show();
+    }
+
+    getTogglerTerminal(toggler: TogglerCommand): vscode.Terminal | undefined {
+        const terminalKey = `${toggler.group}:${toggler.command1.label}`;
+        return this.togglerTerminals.get(terminalKey);
     }
 }
