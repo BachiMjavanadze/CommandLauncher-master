@@ -46,25 +46,38 @@ export class VariableSubstituter {
         const quickPick = vscode.window.createQuickPick();
         quickPick.placeholder = placeholder;
         quickPick.ignoreFocusOut = true;
-    
-        const folderButton: vscode.QuickInputButton = {
-            iconPath: new vscode.ThemeIcon('folder'),
-            tooltip: 'Select folder'
+
+        const folderItem: vscode.QuickPickItem = {
+            label: '$(folder) ',
+            description: 'Select folder',
+            alwaysShow: true
         };
-    
-        quickPick.buttons = [folderButton];
-    
-        return new Promise((resolve) => {
-            quickPick.onDidAccept(() => {
-                const value = quickPick.value || defaultPath;
-                quickPick.hide();
-                resolve(value);
+
+        quickPick.items = [folderItem];
+
+        return new Promise<string | undefined>((resolve) => {
+            let userInput = '';
+
+            quickPick.onDidChangeValue((value) => {
+                userInput = value;
+                quickPick.items = [{ ...folderItem, detail: value || ' ' }];
             });
-    
-            quickPick.onDidHide(() => resolve(undefined));
-    
-            quickPick.onDidTriggerButton(async (button) => {
-                if (button === folderButton) {
+
+            quickPick.onDidAccept(() => {
+                if (userInput) {
+                    quickPick.hide();
+                    resolve(userInput);
+                }
+            });
+
+            quickPick.onDidHide(() => {
+                if (!userInput) {
+                    resolve(undefined);
+                }
+            });
+
+            quickPick.onDidChangeSelection(async (items) => {
+                if (items[0] === folderItem) {
                     const folderUri = await vscode.window.showOpenDialog({
                         canSelectFiles: false,
                         canSelectFolders: true,
@@ -73,11 +86,13 @@ export class VariableSubstituter {
                         defaultUri: vscode.Uri.file(defaultPath)
                     });
                     if (folderUri && folderUri[0]) {
-                        quickPick.value = folderUri[0].fsPath;
+                        userInput = folderUri[0].fsPath;
+                        quickPick.value = userInput;
+                        quickPick.items = [{ ...folderItem, detail: userInput }];
                     }
                 }
             });
-    
+
             quickPick.show();
         });
     }
@@ -92,7 +107,7 @@ export class VariableSubstituter {
                 throw new Error('Folder selection cancelled');
             }
             const convertedPath = this.convertPathForBash(folderPath);
-            return command.replace(regex, `"${convertedPath}"`);
+            return command.replace(regex, `"${convertedPath.replace(/"/g, '\\"')}"`);
         }
         return command;
     }
@@ -102,11 +117,10 @@ export class VariableSubstituter {
         if (terminal && terminal.name.toLowerCase().includes('bash')) {
             // Convert Windows path to Bash-compatible path
             path = path.replace(/\\/g, '/'); // Replace backslashes with forward slashes
-            path = path.replace(/^([A-Za-z]):/, '//$1'); // Convert drive letter to network path style
-            path = path.toLowerCase(); // Bash paths are case-sensitive, so we'll use lowercase
+            path = path.replace(/^([A-Za-z]):/, '/mnt/$1').toLowerCase(); // Convert drive letter to /mnt/x format
             return path;
         }
-        return path;
+        return path; // Return original path for non-Bash terminals
     }
 }
 

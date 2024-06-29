@@ -59,13 +59,13 @@ export class CommandRunner {
             vscode.window.showInformationMessage("A command is already running. Please wait for it to finish.");
             return;
         }
-
+    
         this.isExecutingCommand = true;
-
+    
         try {
             // Reload actions and stored values
             this.allActions = loadActions();
-
+    
             const substituter = new VariableSubstituter(action);
             let command;
             try {
@@ -73,22 +73,21 @@ export class CommandRunner {
             } catch (error) {
                 if (error instanceof Error && error.message === 'Folder selection cancelled') {
                     // User cancelled the folder selection, so we should cancel the whole command execution
-                    this.isExecutingCommand = false;
-                    return;
+                    return; // We'll reset isExecutingCommand in the finally block
                 }
                 throw error; // Re-throw other errors
             }
-
+    
             const variableValues: { [key: string]: { value: string, sourceAction: Action; }; } = {};
-
+    
             if (action.variables) {
                 const variableRegex = /\$\w+/g;
                 const variablesInOrder = command.match(variableRegex) || [];
-
+    
                 for (const varName of variablesInOrder) {
                     let varDetails = action.variables[varName];
                     let sourceAction = action;
-
+    
                     if (!varDetails) {
                         const result = this.findVariableInOtherActions(varName, action);
                         if (result) {
@@ -102,15 +101,15 @@ export class CommandRunner {
                             return;
                         }
                     }
-
+    
                     let value: string | undefined;
-
+    
                     // Update stored options if applicable
                     const storedValue = ValueStorage.getStoredValueForVariable(sourceAction, varName);
                     if (storedValue !== undefined && Array.isArray(storedValue) && varDetails.options) {
                         varDetails.options = storedValue;
                     }
-
+    
                     if (varDetails.defaultValue?.skipDefault) {
                         if (storedValue !== undefined) {
                             value = Array.isArray(storedValue) ? storedValue[0] : storedValue;
@@ -125,21 +124,21 @@ export class CommandRunner {
                         }
                         value = await this.handleVariable(varDetails);
                     }
-
+    
                     if (value === undefined) {
                         return; // Exit if a variable is not set
                     }
-
+    
                     command = command.replace(varName, value);
                     variableValues[varName] = { value, sourceAction };
                 }
             }
-
+    
             await this.executeCommand(command, action);
-
+    
             // Store values after execution
             const actionVariables: { [key: string]: { [key: string]: { [key: string]: string | string[]; }; }; } = {};
-
+    
             for (const [varName, { value, sourceAction }] of Object.entries(variableValues)) {
                 const groupName = sourceAction.group || 'Ungrouped';
                 const actionLabel = sourceAction.label || sourceAction.command;
@@ -149,7 +148,7 @@ export class CommandRunner {
                 if (!actionVariables[groupName][actionLabel]) {
                     actionVariables[groupName][actionLabel] = {};
                 }
-
+    
                 // If the variable has options, store as an array
                 if (sourceAction.variables?.[varName]?.options) {
                     const storedValues = ValueStorage.getStoredValueForVariable(sourceAction, varName) as string[] | undefined;
@@ -163,7 +162,7 @@ export class CommandRunner {
                     actionVariables[groupName][actionLabel][varName] = value;
                 }
             }
-
+    
             for (const [groupName, groupActions] of Object.entries(actionVariables)) {
                 for (const [actionLabel, variables] of Object.entries(groupActions)) {
                     if (Object.keys(variables).length > 0) {
@@ -175,7 +174,7 @@ export class CommandRunner {
                                 }
                                 return acc;
                             }, {} as { [key: string]: string | string[]; });
-
+    
                             if (Object.keys(variablesToStore).length > 0) {
                                 ValueStorage.storeValues(currentAction, variablesToStore);
                             }
@@ -190,9 +189,8 @@ export class CommandRunner {
                 await vscode.window.showErrorMessage('An unknown error occurred.', { modal: true });
             }
             vscode.commands.executeCommand('workbench.action.closeAllInputs');
-            return; // Stop execution
         } finally {
-            this.isExecutingCommand = false;
+            this.isExecutingCommand = false; // Always reset the flag, even if an error occurred or the user cancelled
         }
     }
 
