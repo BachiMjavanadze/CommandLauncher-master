@@ -11,6 +11,24 @@ export class CommandRunner {
     private togglerTerminals: Map<string, vscode.Terminal> = new Map();
     allActions: Action[];
     private _isExecutingCommand: boolean = false;
+    private executionPromise: Promise<void> | null = null;
+
+    public async executeWithLock(action: () => Promise<void>): Promise<void> {
+        if (this.executionPromise) {
+            vscode.window.showInformationMessage("A command is already running. Please wait for it to finish.");
+            return;
+        }
+
+        this.executionPromise = (async () => {
+            try {
+                await action();
+            } finally {
+                this.executionPromise = null;
+            }
+        })();
+
+        await this.executionPromise;
+    }
 
     get isExecutingCommand(): boolean {
         return this._isExecutingCommand;
@@ -34,164 +52,158 @@ export class CommandRunner {
     }
 
     async runActionWithLastArguments(action: Action) {
-        if (this.isExecutingCommand) {
-            vscode.window.showInformationMessage("A command is already running. Please wait for it to finish.");
-            return;
-        }
-
-        this.isExecutingCommand = true;
-
-        try {
-            const terminalCommand = this.actions.get(action);
-            if (terminalCommand !== undefined) {
-                await this.executeCommand(terminalCommand, action);
-            } else {
-                // If there's no stored command, run it as a new command
-                await this.showQuickPick(action);
+        await this.executeWithLock(async () => {
+            if (this.isExecutingCommand) {
+                vscode.window.showInformationMessage("A command is already running. Please wait for it to finish.");
+                return;
             }
-        } finally {
-            this.isExecutingCommand = false;
-        }
+
+            this.isExecutingCommand = true;
+
+            try {
+                const terminalCommand = this.actions.get(action);
+                if (terminalCommand !== undefined) {
+                    await this.executeCommand(terminalCommand, action);
+                } else {
+                    // If there's no stored command, run it as a new command
+                    await this.showQuickPick(action);
+                }
+            } finally {
+                this.isExecutingCommand = false;
+            }
+        });
     }
 
     async showQuickPick(action: Action) {
-        if (this.isExecutingCommand) {
-            vscode.window.showInformationMessage("A command is already running. Please wait for it to finish.");
-            return;
-        }
-    
-        this.isExecutingCommand = true;
-    
-        try {
-            // Reload actions and stored values
-            this.allActions = loadActions();
-    
-            const substituter = new VariableSubstituter(action);
-            let command;
+        await this.executeWithLock(async () => {
             try {
-                command = await substituter.substitute(action.command);
-            } catch (error) {
-                if (error instanceof Error && error.message === 'Folder selection cancelled') {
-                    // User cancelled the folder selection, so we should cancel the whole command execution
-                    return; // We'll reset isExecutingCommand in the finally block
+                // Reload actions and stored values
+                this.allActions = loadActions();
+
+                const substituter = new VariableSubstituter(action);
+                let command;
+                try {
+                    command = await substituter.substitute(action.command);
+                } catch (error) {
+                    if (error instanceof Error && error.message === 'Folder selection cancelled') {
+                        return; // User cancelled, just exit
+                    }
+                    throw error; // Re-throw other errors
                 }
-                throw error; // Re-throw other errors
-            }
-    
-            const variableValues: { [key: string]: { value: string, sourceAction: Action; }; } = {};
-    
-            if (action.variables) {
-                const variableRegex = /\$\w+/g;
-                const variablesInOrder = command.match(variableRegex) || [];
-    
-                for (const varName of variablesInOrder) {
-                    let varDetails = action.variables[varName];
-                    let sourceAction = action;
-    
-                    if (!varDetails) {
-                        const result = this.findVariableInOtherActions(varName, action);
-                        if (result) {
-                            varDetails = result.varDetails;
-                            sourceAction = result.action;
-                        } else {
-                            await vscode.window.showErrorMessage(
-                                `Variable ${varName} not found${action.searchVariablesInCurrentGroup ? ' in the current group' : ''}. Please check your configuration.`,
-                                { modal: true }
-                            );
-                            return;
+
+                const variableValues: { [key: string]: { value: string, sourceAction: Action; }; } = {};
+
+                if (action.variables) {
+                    const variableRegex = /\$\w+/g;
+                    const variablesInOrder = command.match(variableRegex) || [];
+
+                    for (const varName of variablesInOrder) {
+                        let varDetails = action.variables[varName];
+                        let sourceAction = action;
+
+                        if (!varDetails) {
+                            const result = this.findVariableInOtherActions(varName, action);
+                            if (result) {
+                                varDetails = result.varDetails;
+                                sourceAction = result.action;
+                            } else {
+                                await vscode.window.showErrorMessage(
+                                    `Variable ${varName} not found${action.searchVariablesInCurrentGroup ? ' in the current group' : ''}. Please check your configuration.`,
+                                    { modal: true }
+                                );
+                                return;
+                            }
                         }
-                    }
-    
-                    let value: string | undefined;
-    
-                    // Update stored options if applicable
-                    const storedValue = ValueStorage.getStoredValueForVariable(sourceAction, varName);
-                    if (storedValue !== undefined && Array.isArray(storedValue) && varDetails.options) {
-                        varDetails.options = storedValue;
-                    }
-    
-                    if (varDetails.defaultValue?.skipDefault) {
-                        if (storedValue !== undefined) {
-                            value = Array.isArray(storedValue) ? storedValue[0] : storedValue;
-                        } else if (varDetails.defaultValue.value !== undefined) {
-                            value = varDetails.defaultValue.value;
+
+                        let value: string | undefined;
+
+                        // Update stored options if applicable
+                        const storedValue = ValueStorage.getStoredValueForVariable(sourceAction, varName);
+                        if (storedValue !== undefined && Array.isArray(storedValue) && varDetails.options) {
+                            varDetails.options = storedValue;
+                        }
+
+                        if (varDetails.defaultValue?.skipDefault) {
+                            if (storedValue !== undefined) {
+                                value = Array.isArray(storedValue) ? storedValue[0] : storedValue;
+                            } else if (varDetails.defaultValue.value !== undefined) {
+                                value = varDetails.defaultValue.value;
+                            } else {
+                                value = await this.handleVariable(varDetails);
+                            }
                         } else {
+                            if (varDetails.defaultValue?.setStoredValueAsDefault) {
+                                ValueStorage.updateDefaultValue(sourceAction, varName, varDetails);
+                            }
                             value = await this.handleVariable(varDetails);
                         }
-                    } else {
-                        if (varDetails.defaultValue?.setStoredValueAsDefault) {
-                            ValueStorage.updateDefaultValue(sourceAction, varName, varDetails);
+
+                        if (value === undefined) {
+                            return; // Exit if a variable is not set
                         }
-                        value = await this.handleVariable(varDetails);
+
+                        command = command.replace(varName, value);
+                        variableValues[varName] = { value, sourceAction };
                     }
-    
-                    if (value === undefined) {
-                        return; // Exit if a variable is not set
+                }
+
+                await this.executeCommand(command, action);
+
+                // Store values after execution
+                const actionVariables: { [key: string]: { [key: string]: { [key: string]: string | string[]; }; }; } = {};
+
+                for (const [varName, { value, sourceAction }] of Object.entries(variableValues)) {
+                    const groupName = sourceAction.group || 'Ungrouped';
+                    const actionLabel = sourceAction.label || sourceAction.command;
+                    if (!actionVariables[groupName]) {
+                        actionVariables[groupName] = {};
                     }
-    
-                    command = command.replace(varName, value);
-                    variableValues[varName] = { value, sourceAction };
-                }
-            }
-    
-            await this.executeCommand(command, action);
-    
-            // Store values after execution
-            const actionVariables: { [key: string]: { [key: string]: { [key: string]: string | string[]; }; }; } = {};
-    
-            for (const [varName, { value, sourceAction }] of Object.entries(variableValues)) {
-                const groupName = sourceAction.group || 'Ungrouped';
-                const actionLabel = sourceAction.label || sourceAction.command;
-                if (!actionVariables[groupName]) {
-                    actionVariables[groupName] = {};
-                }
-                if (!actionVariables[groupName][actionLabel]) {
-                    actionVariables[groupName][actionLabel] = {};
-                }
-    
-                // If the variable has options, store as an array
-                if (sourceAction.variables?.[varName]?.options) {
-                    const storedValues = ValueStorage.getStoredValueForVariable(sourceAction, varName) as string[] | undefined;
-                    if (Array.isArray(storedValues)) {
-                        // Add the new value to the beginning of the array and remove duplicates
-                        actionVariables[groupName][actionLabel][varName] = [value, ...storedValues.filter(v => v !== value)];
+                    if (!actionVariables[groupName][actionLabel]) {
+                        actionVariables[groupName][actionLabel] = {};
+                    }
+
+                    // If the variable has options, store as an array
+                    if (sourceAction.variables?.[varName]?.options) {
+                        const storedValues = ValueStorage.getStoredValueForVariable(sourceAction, varName) as string[] | undefined;
+                        if (Array.isArray(storedValues)) {
+                            // Add the new value to the beginning of the array and remove duplicates
+                            actionVariables[groupName][actionLabel][varName] = [value, ...storedValues.filter(v => v !== value)];
+                        } else {
+                            actionVariables[groupName][actionLabel][varName] = [value];
+                        }
                     } else {
-                        actionVariables[groupName][actionLabel][varName] = [value];
+                        actionVariables[groupName][actionLabel][varName] = value;
                     }
-                } else {
-                    actionVariables[groupName][actionLabel][varName] = value;
                 }
-            }
-    
-            for (const [groupName, groupActions] of Object.entries(actionVariables)) {
-                for (const [actionLabel, variables] of Object.entries(groupActions)) {
-                    if (Object.keys(variables).length > 0) {
-                        const currentAction = this.allActions.find(a => (a.label || a.command) === actionLabel && (a.group || 'Ungrouped') === groupName);
-                        if (currentAction) {
-                            const variablesToStore = Object.entries(variables).reduce((acc, [varName, value]) => {
-                                if (currentAction.variables?.[varName]?.storeValue) {
-                                    acc[varName] = value;
+
+                for (const [groupName, groupActions] of Object.entries(actionVariables)) {
+                    for (const [actionLabel, variables] of Object.entries(groupActions)) {
+                        if (Object.keys(variables).length > 0) {
+                            const currentAction = this.allActions.find(a => (a.label || a.command) === actionLabel && (a.group || 'Ungrouped') === groupName);
+                            if (currentAction) {
+                                const variablesToStore = Object.entries(variables).reduce((acc, [varName, value]) => {
+                                    if (currentAction.variables?.[varName]?.storeValue) {
+                                        acc[varName] = value;
+                                    }
+                                    return acc;
+                                }, {} as { [key: string]: string | string[]; });
+
+                                if (Object.keys(variablesToStore).length > 0) {
+                                    ValueStorage.storeValues(currentAction, variablesToStore);
                                 }
-                                return acc;
-                            }, {} as { [key: string]: string | string[]; });
-    
-                            if (Object.keys(variablesToStore).length > 0) {
-                                ValueStorage.storeValues(currentAction, variablesToStore);
                             }
                         }
                     }
                 }
+            } catch (error) {
+                if (error instanceof Error) {
+                    await vscode.window.showErrorMessage(error.message, { modal: true });
+                } else {
+                    await vscode.window.showErrorMessage('An unknown error occurred.', { modal: true });
+                }
+                vscode.commands.executeCommand('workbench.action.closeAllInputs');
             }
-        } catch (error) {
-            if (error instanceof Error) {
-                await vscode.window.showErrorMessage(error.message, { modal: true });
-            } else {
-                await vscode.window.showErrorMessage('An unknown error occurred.', { modal: true });
-            }
-            vscode.commands.executeCommand('workbench.action.closeAllInputs');
-        } finally {
-            this.isExecutingCommand = false; // Always reset the flag, even if an error occurred or the user cancelled
-        }
+        });
     }
 
     private findVariableInOtherActions(varName: string, currentAction: Action): { varDetails: Variable, action: Action; } | null {

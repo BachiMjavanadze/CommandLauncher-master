@@ -43,19 +43,19 @@ export class VariableSubstituter {
     }
 
     private async showFolderPicker(placeholder: string, defaultPath: string): Promise<string | undefined> {
-        const quickPick = vscode.window.createQuickPick();
-        quickPick.placeholder = placeholder;
-        quickPick.ignoreFocusOut = true;
-
-        const folderItem: vscode.QuickPickItem = {
-            label: '$(folder) ',
-            description: 'Select folder',
-            alwaysShow: true
-        };
-
-        quickPick.items = [folderItem];
-
         return new Promise<string | undefined>((resolve) => {
+            const quickPick = vscode.window.createQuickPick();
+            quickPick.placeholder = placeholder;
+            quickPick.ignoreFocusOut = true;
+
+            const folderItem: vscode.QuickPickItem = {
+                label: '$(folder) ',
+                description: 'Select folder',
+                alwaysShow: true
+            };
+
+            quickPick.items = [folderItem];
+
             let userInput = '';
 
             quickPick.onDidChangeValue((value) => {
@@ -71,9 +71,7 @@ export class VariableSubstituter {
             });
 
             quickPick.onDidHide(() => {
-                if (!userInput) {
-                    resolve(undefined);
-                }
+                resolve(undefined);
             });
 
             quickPick.onDidChangeSelection(async (items) => {
