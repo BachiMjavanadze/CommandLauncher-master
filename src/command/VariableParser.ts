@@ -43,73 +43,80 @@ export class VariableSubstituter {
     }
 
     private async showFolderPicker(placeholder: string, defaultPath: string): Promise<string | undefined> {
-        return new Promise<string | undefined>((resolve) => {
-            const quickPick = vscode.window.createQuickPick();
-            quickPick.placeholder = placeholder;
-            quickPick.ignoreFocusOut = true;
+        return new Promise<string | undefined>(async (resolve) => {
+            let selectedPath = defaultPath;
+            
+            while (true) {
+                const quickPick = vscode.window.createQuickPick();
+                quickPick.placeholder = placeholder;
+                quickPick.ignoreFocusOut = true;
+                quickPick.value = selectedPath;
     
-            const folderItem: vscode.QuickPickItem = {
-                label: '$(folder) Select folder',
-                alwaysShow: true
-            };
+                const selectFolderItem: vscode.QuickPickItem = { 
+                    label: '$(folder) Select folder',
+                    alwaysShow: true
+                };
+                const confirmItem: vscode.QuickPickItem = { 
+                    label: '$(check) Confirm selection',
+                    alwaysShow: true
+                };
     
-            const updateItems = (value: string) => {
-                quickPick.items = [
-                    folderItem,
-                    ...(value ? [{ label: value, description: 'Current input' }] : [])
-                ];
-            };
+                quickPick.items = [selectFolderItem, confirmItem];
     
-            updateItems('');
+                const selection = await new Promise<string | undefined>(resolveQuickPick => {
+                    quickPick.onDidChangeSelection(items => {
+                        if (items[0] === selectFolderItem) {
+                            resolveQuickPick('select');
+                        } else if (items[0] === confirmItem) {
+                            resolveQuickPick('confirm');
+                        }
+                    });
     
-            quickPick.onDidChangeValue((value) => {
-                updateItems(value);
-            });
+                    quickPick.onDidAccept(() => {
+                        resolveQuickPick('confirm');
+                    });
     
-            quickPick.onDidAccept(() => {
-                const value = quickPick.value;
-                if (value) {
-                    quickPick.hide();
-                    resolve(value);
-                }
-            });
+                    quickPick.onDidHide(() => {
+                        resolveQuickPick('cancel');
+                    });
     
-            quickPick.onDidHide(() => {
-                resolve(undefined);
-            });
+                    quickPick.show();
+                });
     
-            quickPick.onDidChangeSelection(async (items) => {
-                if (items[0] === folderItem) {
+                quickPick.dispose();
+    
+                if (selection === 'select') {
                     const folderUri = await vscode.window.showOpenDialog({
                         canSelectFiles: false,
                         canSelectFolders: true,
                         canSelectMany: false,
                         openLabel: 'Select Root Folder',
-                        defaultUri: vscode.Uri.file(defaultPath)
+                        defaultUri: vscode.Uri.file(selectedPath)
                     });
                     if (folderUri && folderUri[0]) {
-                        const selectedPath = folderUri[0].fsPath;
-                        quickPick.value = selectedPath;
-                        updateItems(selectedPath);
+                        selectedPath = folderUri[0].fsPath;
                     }
+                } else if (selection === 'confirm') {
+                    resolve(selectedPath);
+                    break;
+                } else {
+                    resolve(undefined);
+                    break;
                 }
-            });
-    
-            quickPick.show();
+            }
         });
     }
 
     private async substituteChooseRootFolder(command: string): Promise<string> {
         const regex = /\$chooseRootFolder([/\\][^"'\s]+)?/g;
         if (regex.test(command)) {
-            const defaultPath = this.getDefaultPath();
-            const folderPath = await this.showFolderPicker('Select or enter root folder', defaultPath);
+            const folderPath = await this.showFolderPicker('Select or enter root folder', this.getDefaultPath());
             if (folderPath === undefined) {
-                // User cancelled the folder selection
                 throw new Error('Folder selection cancelled');
             }
             return command.replace(regex, (match) => {
-                const fullPath = match.replace('$chooseRootFolder', folderPath);
+                const additionalPath = match.replace('$chooseRootFolder', '');
+                const fullPath = path.join(folderPath, additionalPath);
                 return quoteWindowsPath(fullPath);
             });
         }
