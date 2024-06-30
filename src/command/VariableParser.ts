@@ -26,11 +26,11 @@ export class VariableSubstituter {
     async substitute(command: string, uri?: vscode.Uri): Promise<string> {
         command = this.substituteInnerVariables(command);
         command = await this.substituteChooseRootFolder(command);
-        command = parse(command, uri);
+        command = this.parse(command, uri);
         if (this.action.preCommand !== undefined) {
             this.action.preCommand = this.substituteInnerVariables(this.action.preCommand);
             this.action.preCommand = await this.substituteChooseRootFolder(this.action.preCommand);
-            this.action.preCommand = parse(this.action.preCommand, uri);
+            this.action.preCommand = this.parse(this.action.preCommand, uri);
         }
         return command;
     }
@@ -100,7 +100,7 @@ export class VariableSubstituter {
     }
 
     private async substituteChooseRootFolder(command: string): Promise<string> {
-        const regex = /\$chooseRootFolder/g;
+        const regex = /\$chooseRootFolder([/\\][^"'\s]+)?/g;
         if (regex.test(command)) {
             const defaultPath = this.getDefaultPath();
             const folderPath = await this.showFolderPicker('Select or enter root folder', defaultPath);
@@ -108,66 +108,90 @@ export class VariableSubstituter {
                 // User cancelled the folder selection
                 throw new Error('Folder selection cancelled');
             }
-            const convertedPath = this.convertPathForBash(folderPath);
-            return command.replace(regex, `"${convertedPath.replace(/"/g, '\\"')}"`);
+            return command.replace(regex, (match) => {
+                const fullPath = match.replace('$chooseRootFolder', folderPath);
+                return quoteWindowsPath(fullPath);
+            });
         }
         return command;
     }
 
-    private convertPathForBash(path: string): string {
-        const terminal = vscode.window.activeTerminal;
-        if (terminal && terminal.name.toLowerCase().includes('bash')) {
-            // Convert Windows path to Bash-compatible path
-            path = path.replace(/\\/g, '/'); // Replace backslashes with forward slashes
-            path = path.replace(/^([A-Za-z]):/, '/mnt/$1').toLowerCase(); // Convert drive letter to /mnt/x format
-            return path;
+    private parse(text: string, uri?: vscode.Uri): string {
+        const activeFile = vscode.window.activeTextEditor?.document;
+        if (activeFile !== undefined) {
+            text = this.parseActiveFileVariables(activeFile, text);
         }
-        return path; // Return original path for non-Bash terminals
+
+        const workspaceFolder = uri
+            ? vscode.workspace.getWorkspaceFolder(uri)
+            : vscode.workspace.workspaceFolders?.[0];
+
+        const baseFolderAbsolutePath = workspaceFolder ? workspaceFolder.uri.fsPath : '';
+        
+        // Handle $baseFolderAbsolutePath
+        text = text.replace(/\$baseFolderAbsolutePath([/\\][^"'\s]+)?/g, (match) => {
+            const fullPath = match.replace('$baseFolderAbsolutePath', baseFolderAbsolutePath);
+            return quoteWindowsPath(fullPath);
+        });
+
+        if (uri) {
+            text = this.parseContextMenuVariables(uri, text);
+        }
+        text = text.replace(/\${pathSeparator}/g, path.sep);
+        return text;
+    }
+
+    private parseContextMenuVariables(uri: vscode.Uri, text: string): string {
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+        const clickedItemAbsolutePath = uri.fsPath;
+        const clickedItemRelativePath = workspaceFolder ? vscode.workspace.asRelativePath(uri) : clickedItemAbsolutePath;
+
+        text = text.replace(/\$clickedItemAbsolutePath([/\\][^"'\s]+)?/g, (match) => {
+            const fullPath = match.replace('$clickedItemAbsolutePath', clickedItemAbsolutePath);
+            return quoteWindowsPath(fullPath);
+        });
+        text = text.replace(/\$clickedItemRelativePath([/\\][^"'\s]+)?/g, (match) => {
+            const fullPath = match.replace('$clickedItemRelativePath', clickedItemRelativePath);
+            return quoteWindowsPath(fullPath);
+        });
+
+        return text;
+    }
+
+    private parseActiveFileVariables(activeFile: vscode.TextDocument, text: string): string {
+        const absoluteFilePath = activeFile.uri.fsPath;
+        const absolutePath = path.parse(absoluteFilePath);
+
+        text = text.replace(/\${file}([/\\][^"'\s]+)?/g, (match) => {
+            const fullPath = match.replace('${file}', absoluteFilePath);
+            return quoteWindowsPath(fullPath);
+        });
+        text = text.replace(/\${fileBasename}/g, absolutePath.base);
+        text = text.replace(/\${fileBasenameNoExtension}/g, absolutePath.name);
+        text = text.replace(/\${fileExtname}/g, absolutePath.ext);
+        text = text.replace(/\${fileDirname}([/\\][^"'\s]+)?/g, (match) => {
+            const fullPath = match.replace('${fileDirname}', path.dirname(absoluteFilePath));
+            return quoteWindowsPath(fullPath);
+        });
+        text = text.replace(/\${fileWorkspaceFolder}([/\\][^"'\s]+)?/g, (match) => {
+            const workspaceFolder = vscode.workspace.getWorkspaceFolder(activeFile.uri);
+            if (workspaceFolder) {
+                const fullPath = match.replace('${fileWorkspaceFolder}', workspaceFolder.uri.fsPath);
+                return quoteWindowsPath(fullPath);
+            }
+            return '';
+        });
+
+        return text;
     }
 }
 
-function parse(text: string, uri?: vscode.Uri): string {
-    const activeFile = vscode.window.activeTextEditor?.document;
-    if (activeFile !== undefined) {
-        text = parseActiveFileVariables(activeFile, text);
-    }
-
-    // Always try to get the workspace folder, even if uri is undefined
-    const workspaceFolder = uri
-        ? vscode.workspace.getWorkspaceFolder(uri)
-        : vscode.workspace.workspaceFolders?.[0];
-
-    const baseFolderAbsolutePath = workspaceFolder ? workspaceFolder.uri.fsPath : '';
-    text = text.replace(/\$baseFolderAbsolutePath/g, baseFolderAbsolutePath);
-
-    if (uri) {
-        text = parseContextMenuVariables(uri, text);
-    }
-    text = text.replace(/\${pathSeparator}/g, path.sep);
-    return text;
-}
-
-function parseContextMenuVariables(uri: vscode.Uri, text: string): string {
-    const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
-    const clickedItemAbsolutePath = uri.fsPath;
-    const clickedItemRelativePath = workspaceFolder ? vscode.workspace.asRelativePath(uri) : clickedItemAbsolutePath;
-
-    text = text.replace(/\$clickedItemAbsolutePath/g, clickedItemAbsolutePath);
-    text = text.replace(/\$clickedItemRelativePath/g, clickedItemRelativePath);
-
-    return text;
-}
-
-function parseActiveFileVariables(activeFile: vscode.TextDocument, text: string): string {
-    const absoluteFilePath = activeFile.uri.fsPath;
-    const absolutePath = path.parse(absoluteFilePath);
-
-    text = text.replace(/\${file}/g, absoluteFilePath);
-    text = text.replace(/\${fileBasename}/g, absolutePath.base);
-    text = text.replace(/\${fileBasenameNoExtension}/g, absolutePath.name);
-    text = text.replace(/\${fileExtname}/g, absolutePath.ext);
-    text = text.replace(/\${fileDirname}/g, path.dirname(absoluteFilePath));
-    text = text.replace(/\${fileWorkspaceFolder}/g, vscode.workspace.getWorkspaceFolder(activeFile.uri)?.uri.fsPath || '');
-
-    return text;
+function quoteWindowsPath(windowsPath: string): string {
+    // Remove any existing quotes
+    windowsPath = windowsPath.replace(/^"(.*)"$/, '$1');
+    // Escape any existing double quotes
+    windowsPath = windowsPath.replace(/"/g, '\\"');
+    // Ensure the path uses backslashes
+    windowsPath = windowsPath.replace(/\//g, '\\');
+    return `"${windowsPath}"`;
 }
