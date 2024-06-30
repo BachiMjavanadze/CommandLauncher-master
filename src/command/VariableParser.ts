@@ -47,33 +47,37 @@ export class VariableSubstituter {
             const quickPick = vscode.window.createQuickPick();
             quickPick.placeholder = placeholder;
             quickPick.ignoreFocusOut = true;
-
+    
             const folderItem: vscode.QuickPickItem = {
-                label: '$(folder) ',
-                description: 'Select folder',
+                label: '$(folder) Select folder',
                 alwaysShow: true
             };
-
-            quickPick.items = [folderItem];
-
-            let userInput = '';
-
+    
+            const updateItems = (value: string) => {
+                quickPick.items = [
+                    folderItem,
+                    ...(value ? [{ label: value, description: 'Current input' }] : [])
+                ];
+            };
+    
+            updateItems('');
+    
             quickPick.onDidChangeValue((value) => {
-                userInput = value;
-                quickPick.items = [{ ...folderItem, detail: value || ' ' }];
+                updateItems(value);
             });
-
+    
             quickPick.onDidAccept(() => {
-                if (userInput) {
+                const value = quickPick.value;
+                if (value) {
                     quickPick.hide();
-                    resolve(userInput);
+                    resolve(value);
                 }
             });
-
+    
             quickPick.onDidHide(() => {
                 resolve(undefined);
             });
-
+    
             quickPick.onDidChangeSelection(async (items) => {
                 if (items[0] === folderItem) {
                     const folderUri = await vscode.window.showOpenDialog({
@@ -84,13 +88,13 @@ export class VariableSubstituter {
                         defaultUri: vscode.Uri.file(defaultPath)
                     });
                     if (folderUri && folderUri[0]) {
-                        userInput = folderUri[0].fsPath;
-                        quickPick.value = userInput;
-                        quickPick.items = [{ ...folderItem, detail: userInput }];
+                        const selectedPath = folderUri[0].fsPath;
+                        quickPick.value = selectedPath;
+                        updateItems(selectedPath);
                     }
                 }
             });
-
+    
             quickPick.show();
         });
     }
